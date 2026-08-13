@@ -1,42 +1,40 @@
-# ========== Keil 生成的编译文件 ==========
-# 编译输出
-Objects/
-Listings/
-*.obj
-*.o
-*.lst
-*.map
-*.hex
+# ESP-IDF 构建输出
+build/
+sdkconfig
+sdkconfig.old
 *.bin
-*.axf
 *.elf
+*.map
+*.o
+*.a
+*.so
 *.d
-*.crf
-*.htm
-*.dep
-*.lnp
-*.iex
 
-# UV4 项目临时文件
-*.uvguix.*
-*.uvoptx
-*.uvopt
-*.scvd
-JLinkLog.txt
-JLinkSettings.ini
-EventRecorderStub.scvd
-
-# ========== VS Code 配置（可选） ==========
+# IDE 文件
 .vscode/
-*.code-workspace
+.idea/
+*.swp
+*.swo
+*~
 
-# ========== 系统文件 ==========
-.DS_Store
-Thumbs.db
-desktop.ini
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
 
-# ========== 其他常见忽略 ==========
+# 日志文件
 *.log
+*.txt
+
+# 依赖管理
+managed_components/
+dependencies.lock
+
+# 临时文件
 *.tmp
 *.bak
-*.old
+*.backup
+
+# 操作系统文件
+.DS_Store
+Thumbs.db

@@ -1,6 +1,0 @@
-"-specs=D:/data/c_code/esp32s/espidf/project/ESP32_Smart_Home/build/bootloader/specs/picolibc.specs"
--Wno-frame-address
--mlongcalls
--fno-builtin-memcpy
--fno-builtin-memset
--fno-builtin-bzero
