@@ -1,78 +1,42 @@
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Directory metadata
-.directory
-
-# Temporary files
-*~
-*.swp
-*.swo
-*.bak
-*.tmp
-
-# Log files
-*.log
-
-# Build artifacts and directories
-**/build/
-build/
+# ========== Keil 生成的编译文件 ==========
+# 编译输出
+Objects/
+Listings/
+*.obj
 *.o
-*.a
-*.out
-*.exe # For any host-side utilities compiled on Windows
-
-# ESP-IDF specific build outputs
-*.bin
-*.elf
+*.lst
 *.map
-flasher_args.json # Generated in build directory
-sdkconfig.old
-sdkconfig
+*.hex
+*.bin
+*.axf
+*.elf
+*.d
+*.crf
+*.htm
+*.dep
+*.lnp
+*.iex
 
-# ESP-IDF dependencies
-# For older versions or manual component management
-/components/.idf/
-**/components/.idf/
-# For modern ESP-IDF component manager
-managed_components/
-# If ESP-IDF tools are installed/referenced locally to the project
-.espressif/
+# UV4 项目临时文件
+*.uvguix.*
+*.uvoptx
+*.uvopt
+*.scvd
+JLinkLog.txt
+JLinkSettings.ini
+EventRecorderStub.scvd
 
-# CMake generated files
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-install_manifest.txt
-CTestTestfile.cmake
+# ========== VS Code 配置（可选） ==========
+.vscode/
+*.code-workspace
 
-# Python environment files
-*.pyc
-*.pyo
-*.pyd
-__pycache__/
-*.egg-info/
-dist/
-
-# Virtual environment folders
-venv/
-.venv/
-env/
-
-# Language Servers
-.clangd/
-.ccls-cache/
-compile_commands.json
-
-# Windows specific
+# ========== 系统文件 ==========
+.DS_Store
 Thumbs.db
-ehthumbs.db
-Desktop.ini
+desktop.ini
 
-# User-specific configuration files
-*.user
-*.workspace # General workspace files, can be from various tools
-*.suo       # Visual Studio Solution User Options
-*.sln.docstates # Visual Studio
+# ========== 其他常见忽略 ==========
+*.log
+*.tmp
+*.bak
+*.old
