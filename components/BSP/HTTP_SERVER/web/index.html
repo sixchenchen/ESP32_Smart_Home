@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>
+        ESP32 WIFI CONFIG
+    </title>
+
+    <link rel="stylesheet" href="./style.css">
+
+</head>
+
+
+<body>
+
+
+    <div class="box">
+
+
+        <h2>
+            ESP32 WiFi配置
+        </h2>
+
+
+
+        <label>
+            附近WiFi
+        </label>
+
+
+        <!-- WiFi列表 -->
+
+        <select id="wifi_list" size="5" onchange="select_wifi()">
+        </select>
+
+
+
+
+        <label>
+            SSID
+        </label>
+
+
+        <input id="ssid" type="text">
+
+
+
+        <label>
+            PASSWORD
+        </label>
+
+
+        <input id="password" type="password">
+
+
+
+        <button onclick="connect_wifi()">
+
+            连接WiFi
+
+        </button>
+
+
+
+        <button class="scanf_wifi" onclick="scan_wifi()">
+            扫描WiFi
+        </button>
+        <button class="reset-btn" onclick="factoryReset()">
+            恢复出厂设置
+        </button>
+        <p id="msg"></p>
+    </div>
+    <script src="app.js?v=2"></script>
+</body>
+
+
+</html>
