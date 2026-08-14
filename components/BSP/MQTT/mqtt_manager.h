@@ -15,8 +15,8 @@ typedef enum
     MQTT收到数据后调用
 */
 typedef void (*mqtt_rx_callback_t)(
-    char *topic,
-    char *data,
+    const char *topic,
+    const uint8_t *data,
     int len);
 
 typedef void (*mqtt_status_callback_t)(mqtt_status_t status);
@@ -33,11 +33,9 @@ esp_err_t mqtt_manager_start(void);
 /*
     发布消息
 */
-esp_err_t mqtt_manager_publish(
-    const char *topic,
-    const char *data,
-    int len);
+esp_err_t mqtt_manager_publish(const char *topic, const char *data, int len);
 
 void mqtt_manager_register_callback(mqtt_rx_callback_t callback);
-void mqtt_manager_register_status_callback( mqtt_status_callback_t callback);
+void mqtt_manager_register_status_callback(mqtt_status_callback_t callback);
+
 #endif

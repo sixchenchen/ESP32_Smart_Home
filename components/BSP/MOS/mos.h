@@ -6,7 +6,6 @@
 
 /*
     ESP32 MOS GPIO定义
-
     MOS0 -> GPIO13
     MOS1 -> GPIO12
     MOS2 -> GPIO14
@@ -16,9 +15,7 @@
     MOS6 -> GPIO33
     MOS7 -> GPIO32
 */
-
 #define MOS_CHANNEL_NUM 8
-
 #define MOS0_GPIO GPIO_NUM_13
 #define MOS1_GPIO GPIO_NUM_12
 #define MOS2_GPIO GPIO_NUM_14
@@ -34,6 +31,12 @@ typedef enum
     MOS_ON = 1
 } MOS_State;
 
+typedef enum
+{
+    MOS_ALL_OFF = 0x00,
+    MOS_ALL_ON = 0xFF,
+} MOS_AllState;
+
 /*
     MOS初始化
 */
@@ -41,33 +44,28 @@ void MOS_Init(void);
 
 /*
     单路MOS控制
-
     channel: 0~7
     state:   MOS_ON / MOS_OFF
 */
-void MOS_Control(uint8_t channel, MOS_State state);
+uint8_t MOS_Control(uint8_t channel, MOS_State state);
 
 /*
     全部MOS控制
-
     state:
         MOS_ON
         MOS_OFF
 */
-void MOS_All_Control(MOS_State state);
+uint8_t MOS_All_Control(MOS_State state);
 
 /*
     获取单路MOS状态
-
     返回：
         MOS_OFF
         MOS_ON
 */
 MOS_State MOS_Get_State(uint8_t channel);
-
 /*
     获取全部MOS状态
-
     bit0 -> MOS0
     bit1 -> MOS1
     ...

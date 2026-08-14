@@ -2,48 +2,21 @@
 #include "mos.h"
 #include "uart_drv.h"
 
-/*
-    协议接收状态机
-*/
-typedef enum
-{
-    WAIT_HEAD = 0,
-    WAIT_ADDR,
-    WAIT_CMD,
-    WAIT_LEN,
-    WAIT_DATA,
-    WAIT_CRC
-
-} MOS_RX_STATE;
-
-/*
-    当前状态
-*/
+// 当前状态
 static MOS_RX_STATE state = WAIT_HEAD;
-
-/*
-    当前接收帧
-    最大：HEAD ADDRESS CMD LEN DATA(8) 共12字节 CRC单独接收
-*/
+// 当前最大帧数：HEAD ADDRESS CMD LEN DATA(8) 共12字节 CRC单独接收
 static uint8_t frame[4 + MOS_MAX_DATA_LEN];
-
-/*
-    当前已经接收的字节数量
-    frame[0] = HEAD
-    frame[1] = ADDRESS
-    frame[2] = CMD
-    frame[3] = LEN
-    frame[4...] = DATA
-*/
 static uint8_t frame_index = 0;
-/*
-    DATA长度
-*/
+// DATA长度
 static uint8_t data_len = 0;
 /*
-    CRC计算
-    CRC范围： ADDRESS CMD LEN DATA 不包含HEAD
+  静态函数声明
 */
+static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len);
+static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len);
+static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len);
+
+// CRC计算(范围)： ADDRESS CMD LEN DATA 不包含HEAD
 static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len)
 {
     uint8_t crc = 0;
@@ -54,34 +27,25 @@ static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len)
     return crc;
 }
 
-/*
-    发送回复
-*/
+// 发送回复
 static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len)
 {
     uint8_t tx[16];
     uint8_t index = 0;
     // HEAD
     tx[index++] = MOS_FRAME_HEAD;
-
     // ADDRESS
     tx[index++] = MOS_DEVICE_ADDR;
-
     // CMD
     tx[index++] = cmd;
-
     // LEN
     tx[index++] = len;
-
     // DATA
     for (uint8_t i = 0; i < len; i++)
     {
         tx[index++] = data[i];
     }
-
-    /*
-        CRC计算： ADDRESS  CMD LEN DATA
-    */
+    // CRC计算： ADDRESS  CMD LEN DATA
     tx[index] = MOS_Calc_CRC(&tx[1], index - 1);
     index++;
     // UART发送
@@ -108,26 +72,21 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
     {
         return;
     }
-
     // HEAD
     if (buf[0] != MOS_FRAME_HEAD)
     {
         return;
     }
-
     // ADDRESS
     addr = buf[1];
     if (addr != MOS_DEVICE_ADDR)
     {
         return;
     }
-
     //  CMD
     cmd = buf[2];
-
     // LEN
     len = buf[3];
-
     // 防止DATA越界
     if (len > MOS_MAX_DATA_LEN)
     {
@@ -138,11 +97,9 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
     {
         return;
     }
-
     // 根据CMD执行
     switch (cmd)
     {
-
     /*
         单路MOS控制
         DATA[0] = channel
@@ -152,7 +109,6 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
     {
         uint8_t channel;
         uint8_t mos_state;
-
         // 必须有两个DATA
         if (len != 2)
         {
@@ -165,19 +121,15 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
         {
             return;
         }
-
         // 状态只允许： 0 = OFF, 1 = ON
-        if (mos_state != MOS_OFF &&
-            mos_state != MOS_ON)
+        if (mos_state != MOS_OFF && mos_state != MOS_ON)
         {
             return;
         }
-
         // 执行控制
         MOS_Control(channel, (MOS_State)mos_state);
     }
     break;
-
     // 全部MOS控制DATA[0]: 0 = OFF,1 = ON
     case CMD_MOS_ALL_CONTROL:
     {
@@ -189,8 +141,7 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
         }
         mos_state = buf[4];
         // 状态检查
-        if (mos_state != MOS_OFF &&
-            mos_state != MOS_ON)
+        if (mos_state != MOS_OFF && mos_state != MOS_ON)
         {
             return;
         }
@@ -198,7 +149,6 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
         MOS_All_Control((MOS_State)mos_state);
     }
     break;
-
     /*
         8路状态设置
         DATA[0]:
@@ -213,17 +163,17 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
     */
     case CMD_MOS_STATE_SET:
     {
-        uint8_t mos_state;
+        uint8_t new_state;
         // 必须1个DATA
         if (len != 1)
         {
             return;
         }
-        mos_state = buf[4];
+        new_state = buf[4];
         //  根据bit控制8路
         for (uint8_t i = 0; i < MOS_CHANNEL_NUM; i++)
         {
-            if (mos_state & (1U << i))
+            if (new_state & (1U << i))
             {
                 MOS_Control(i, MOS_ON);
             }
@@ -265,8 +215,7 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
 void MOS_Protocol_Init(void)
 {
     /*
-        UART接收一个字节后，
-        调用MOS_Protocol_RxByte()
+        UART接收一个字节后，调用MOS_Protocol_RxByte()
     */
     uart_drv_register_callback(MOS_Protocol_RxByte);
     //  初始化状态机
@@ -298,9 +247,7 @@ void MOS_Protocol_RxByte(uint8_t ch)
             state = WAIT_ADDR;
         }
         break;
-    /*
-        ADDRESS
-    */
+        // ADDRESS
     case WAIT_ADDR:
         // 保存ADDRESS
         frame[frame_index++] = ch;
@@ -309,7 +256,6 @@ void MOS_Protocol_RxByte(uint8_t ch)
         break;
     // CMD
     case WAIT_CMD:
-
         // 保存CMD
         frame[frame_index++] = ch;
         // LEN
@@ -345,7 +291,6 @@ void MOS_Protocol_RxByte(uint8_t ch)
     case WAIT_DATA:
         // 保存DATA
         frame[frame_index++] = ch;
-
         /*
             判断DATA是否收完
             frame_index：

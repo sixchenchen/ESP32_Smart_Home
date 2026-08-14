@@ -5,11 +5,12 @@
 #include <stdint.h>
 
 #define UART_PORT_NUM UART_NUM_1
-
 #define UART_TX_GPIO GPIO_NUM_17
 #define UART_RX_GPIO GPIO_NUM_16
 
 #define UART_BUF_SIZE 1024
+#define UART_BAUD_RATE 115200
+
 typedef void (*uart_rx_callback_t)(uint8_t data);
 
 esp_err_t uart_drv_init(void);

@@ -15,4 +15,4 @@ typedef struct
 
 esp_err_t wifi_scan_start(wifi_scan_result_t *result, uint16_t max_num, uint16_t *count);
 
-#endif // !
+#endif

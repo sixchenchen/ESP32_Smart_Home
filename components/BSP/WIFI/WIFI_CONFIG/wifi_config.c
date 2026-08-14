@@ -6,10 +6,6 @@
 
 static const char *TAG = "wifi_config";
 
-#define WIFI_NAMESPACE "wifi"
-#define WIFI_SSID_KEY "ssid"
-#define WIFI_PASS_KEY "password"
-
 /*
     保存WiFi
 */

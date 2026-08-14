@@ -24,13 +24,6 @@ void app_main(void)
     mqtt_manager_init();
     while (1)
     {
-
-        mqtt_manager_publish(
-            "esp32/test",
-            "{\"online\":1}",
-            strlen("{\"online\":1}"));
-
-        vTaskDelay(
-            pdMS_TO_TICKS(5000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }

@@ -1,16 +1,15 @@
 #ifndef MQTT_SERVICE_H
 #define MQTT_SERVICE_H
 
-#define MQTT_CONTROL_TOPIC "device/device001/control"
-#define DEVICE_ID "device001"
-#define TOPIC_ONLINE "device/device001/online"
-#define TOPIC_HEART "device/device001/heartbeat"
-#define TOPIC_STATE "device/device001/state"
-#define TOPIC_CONTROL "device/device001/control"
-#define TOPIC_REPLY "device/device001/reply"
+#include <stdint.h>
 
+// 初始化 MQTT 服务
 void mqtt_service_init(void);
 
+// 发布 MOS 状态
 void mqtt_service_publish_state(void);
+
+// 发布 MOS 事件
+void mqtt_service_publish_mos_event(uint8_t channel, uint8_t state);
 
 #endif

@@ -5,6 +5,21 @@
 
 #define WIFI_MAX_RETRY 3
 
+// 当前状态
+typedef enum
+{
+    WIFI_MANAGER_IDLE,
+
+    WIFI_MANAGER_AP_CONFIG,
+
+    WIFI_MANAGER_CONNECTING,
+
+    WIFI_MANAGER_CONNECTED,
+
+    WIFI_MANAGER_ERROR,
+
+} wifi_manager_state_t;
+
 /*
     初始化wifi系统
 */
@@ -23,9 +38,7 @@ bool wifi_manager_is_connected(void);
 /*
     配网完成
 */
-void wifi_manager_set_wifi(
-    const char *ssid,
-    const char *password);
+void wifi_manager_set_wifi(const char *ssid, const char *password);
 /*
     清除wifi配置
 */

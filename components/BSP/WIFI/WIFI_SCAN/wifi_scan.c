@@ -12,26 +12,30 @@ esp_err_t wifi_scan_start(wifi_scan_result_t *result, uint16_t max_num, uint16_t
     {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_wifi_get_mode(&mode);
-    if (mode == WIFI_MODE_AP)
+    wifi_mode_t current_mode;
+    esp_wifi_get_mode(&current_mode);
+    bool need_switch = false;
+    if (current_mode == WIFI_MODE_AP)
     {
+        // 不能直接用 AP 模式扫描，需要先切换到 STA
         wifi_mode_config_start();
+        need_switch = true;
+        vTaskDelay(pdMS_TO_TICKS(100)); // 等待模式切换
     }
-    /*
-        开始扫描
-        false:非阻塞扫描
-    */
-    ESP_ERROR_CHECK(
-        esp_wifi_scan_start(
-            NULL,
-            true));
-    uint16_t ap_num = max_num;
-    // 获取扫描结果
+    // 开始扫描, false:非阻塞扫描
+    esp_err_t ret = esp_wifi_scan_start(NULL, true);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "扫描启动失败: %d", ret);
+        return ret;
+    };
+    uint16_t ap_num = 0;
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_num));
     if (ap_num > max_num)
     {
         ap_num = max_num;
     }
+    // 获取扫描结果
     wifi_ap_record_t *ap_list = malloc(sizeof(wifi_ap_record_t) * ap_num);
     if (ap_list == NULL)
     {
@@ -41,7 +45,8 @@ esp_err_t wifi_scan_start(wifi_scan_result_t *result, uint16_t max_num, uint16_t
     for (int i = 0; i < ap_num; i++)
     {
         memset(&result[i], 0, sizeof(wifi_scan_result_t));
-        strcpy(result[i].ssid, (char *)ap_list[i].ssid);
+        strncpy(result[i].ssid, (char *)ap_list[i].ssid, sizeof(result[i].ssid) - 1);
+        result[i].ssid[sizeof(result[i].ssid) - 1] = '\0';
         result[i].rssi = ap_list[i].rssi;
         result[i].channel = ap_list[i].primary;
         result[i].authmode = ap_list[i].authmode;
