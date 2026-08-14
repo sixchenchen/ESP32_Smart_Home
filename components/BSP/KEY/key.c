@@ -16,22 +16,13 @@ static QueueHandle_t key_queue = NULL;
 
 /*
     GPIO中断
-
     只发送事件
 */
 static void IRAM_ATTR key_isr_handler(void *arg)
 {
-
-    uint32_t gpio_num =
-        (uint32_t)arg;
-
+    uint32_t gpio_num = (uint32_t)arg;
     BaseType_t pxHigherPriorityTaskWoken = pdFALSE;
-
-    xQueueSendFromISR(
-        key_queue,
-        &gpio_num,
-        &pxHigherPriorityTaskWoken);
-
+    xQueueSendFromISR(key_queue, &gpio_num, &pxHigherPriorityTaskWoken);
     if (pxHigherPriorityTaskWoken)
     {
         portYIELD_FROM_ISR();
@@ -40,97 +31,42 @@ static void IRAM_ATTR key_isr_handler(void *arg)
 
 /*
     按键任务
-
 */
 static void key_task(void *arg)
 {
-
     uint32_t gpio_num;
-
     while (1)
     {
-
-        if (
-            xQueueReceive(
-                key_queue,
-                &gpio_num,
-                portMAX_DELAY))
+        if (xQueueReceive(key_queue, &gpio_num, portMAX_DELAY))
         {
+            ESP_LOGI(TAG, "key press");
+            vTaskDelay(pdMS_TO_TICKS(50));
 
-            ESP_LOGI(TAG,
-                     "key press");
-
-            /*
-                消抖
-            */
-
-            vTaskDelay(
-                pdMS_TO_TICKS(50));
-
-            /*
-                确认按下
-            */
-
-            if (
-                gpio_get_level(
-                    BOOT_INT_GPIO_PIN) == 0)
+            if (gpio_get_level(BOOT_INT_GPIO_PIN) == 0)
             {
-
                 uint32_t press_time = 0;
-
-                /*
-                    开始检测长按
-
-                    每10ms检测一次
-
-                */
-
-                while (
-                    gpio_get_level(
-                        BOOT_INT_GPIO_PIN) == 0)
+                while (gpio_get_level(BOOT_INT_GPIO_PIN) == 0)
                 {
-
-                    vTaskDelay(
-                        pdMS_TO_TICKS(10));
-
+                    vTaskDelay(pdMS_TO_TICKS(10));
                     press_time += 10;
 
-                    /*
-                        长按2秒
-
-                    */
-
-                    if (
-                        press_time >=
-                        KEY_LONG_PRESS_TIME_MS)
+                    if (press_time >= KEY_LONG_PRESS_TIME_MS)
                     {
+                        ESP_LOGW(TAG, "long press reset wifi");
 
-                        ESP_LOGW(
-                            TAG,
-                            "long press reset wifi");
+                        // 先禁用中断，防止干扰
+                        gpio_isr_handler_remove(BOOT_INT_GPIO_PIN);
 
+                        // 执行复位
                         wifi_manager_factory_reset();
 
-                        /*
-                            等待释放
-
-                        */
-
-                        while (
-                            gpio_get_level(
-                                BOOT_INT_GPIO_PIN) == 0)
-                        {
-
-                            vTaskDelay(
-                                pdMS_TO_TICKS(50));
-                        }
-
-                        break;
+                        // 直接退出任务，不等待按键释放
+                        ESP_LOGI(TAG, "factory reset done, delete key task");
+                        vTaskDelete(NULL);
+                        return;
                     }
                 }
-
-                ESP_LOGI(TAG,
-                         "key release");
+                ESP_LOGI(TAG, "key release");
             }
         }
     }
@@ -138,12 +74,8 @@ static void key_task(void *arg)
 
 esp_err_t key_init(void)
 {
-    /*
-        创建消息队列
-    */
-
+    //  创建消息队列
     key_queue = xQueueCreate(5, sizeof(uint32_t));
-
     if (key_queue == NULL)
     {
         return ESP_FAIL;

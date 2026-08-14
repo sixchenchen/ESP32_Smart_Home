@@ -16,7 +16,6 @@ static TaskHandle_t heartbeat_handle = NULL;
 /*
   静态函数声明
 */
-static void mqtt_online(void);
 static void mqtt_start_heartbeat(void);
 static void mqtt_stop_heartbeat(void);
 static void heartbeat_task(void *arg);
@@ -24,15 +23,26 @@ static void mqtt_publish_mos_event(uint8_t channel, uint8_t state);
 static void mqtt_handle_mos_control(cJSON *root);
 static void mqtt_handle_mos_all_control(cJSON *root);
 static void mqtt_publish_error(uint16_t code, const char *msg);
+static void mqtt_publish_status(bool online);
+
 /*
-    上线
+    发布状态
 */
-static void mqtt_online(void)
+static void mqtt_publish_status(bool online)
 {
     char msg[128];
-    sprintf(msg, "{\"device\":\"%s\",\"status\":\"online\"}", DEVICE_ID);
-    mqtt_manager_publish(TOPIC_ONLINE, msg, strlen(msg));
+    if (online)
+    {
+        snprintf(msg, sizeof(msg), "{\"device\":\"%s\",\"status\":\"online\"}", DEVICE_ID);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg), "{\"device\":\"%s\",\"status\":\"offline\"}", DEVICE_ID);
+    }
+
+    mqtt_manager_publish(TOPIC_STATUS, msg, strlen(msg), 1, true);
 }
+
 /*
     MQTT收到数据回调
 */
@@ -155,19 +165,24 @@ static void mqtt_handle_mos_all_control(cJSON *root)
 /*
     状态回调
 */
-static void mqtt_status_callback(mqtt_status_t status)
+static void mqtt_status_callback(mqtt_state_t state)
 {
-    switch (status)
+    switch (state)
     {
-    case MQTT_STATUS_CONNECTED:
+    case MQTT_STATE_RUNNING:
         ESP_LOGI(TAG, "MQTT 已连接");
-        mqtt_online();
+        mqtt_publish_status(true);
         mqtt_service_publish_state();
         mqtt_start_heartbeat();
         break;
 
-    case MQTT_STATUS_DISCONNECTED:
-        ESP_LOGW(TAG, "MQTT 已断开");
+    case MQTT_STATE_STOPPED:
+        ESP_LOGW(TAG, "MQTT 已停止");
+        mqtt_stop_heartbeat();
+        break;
+
+    case MQTT_STATE_ERROR:
+        ESP_LOGE(TAG, "MQTT 错误状态");
         mqtt_stop_heartbeat();
         break;
 
@@ -189,7 +204,7 @@ static void heartbeat_task(void *arg)
                  DEVICE_ID,
                  esp_timer_get_time() / 1000000);
 
-        mqtt_manager_publish(TOPIC_HEART, msg, strlen(msg));
+        mqtt_manager_publish(TOPIC_HEART, msg, strlen(msg), 0, false);
         vTaskDelay(pdMS_TO_TICKS(HEARTBEAT_INTERVAL_MS));
     }
 }
@@ -227,7 +242,7 @@ static void mqtt_publish_mos_event(uint8_t channel, uint8_t state)
              "{\"type\":\"%s\",\"channel\":%d,\"state\":%d}",
              EVENT_MOS_CHANGE, channel, state);
 
-    mqtt_manager_publish(TOPIC_EVENT, msg, strlen(msg));
+    mqtt_manager_publish(TOPIC_EVENT, msg, strlen(msg), 1, false);
 }
 
 /*
@@ -247,7 +262,7 @@ static void mqtt_publish_error(uint16_t code, const char *msg)
         code,
         msg);
 
-    mqtt_manager_publish(TOPIC_EVENT, data, strlen(data));
+    mqtt_manager_publish(TOPIC_EVENT, data, strlen(data), 1, false);
 
     ESP_LOGW(TAG, "MQTT ERROR:%s", data);
 }
@@ -271,7 +286,7 @@ void mqtt_service_publish_state(void)
              (state >> 5) & 1,
              (state >> 6) & 1,
              (state >> 7) & 1);
-    mqtt_manager_publish(TOPIC_STATE, msg, strlen(msg));
+    mqtt_manager_publish(TOPIC_STATE, msg, strlen(msg), 1, true);
 }
 
 /*

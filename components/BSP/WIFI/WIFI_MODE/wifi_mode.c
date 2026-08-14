@@ -5,13 +5,6 @@
 
 static const char *TAG = "wifi_mode";
 
-// WiFi连接成功回调
-static wifi_connected_cb_t s_connect_cb = NULL;
-// wifi名称
-static char s_last_ssid[32] = {0};
-// wifi密码
-static char s_last_password[64] = {0};
-
 /*
     开启 APSTA 配网模式
     手机:连接 ESP32_CONFIG
@@ -41,26 +34,12 @@ esp_err_t wifi_mode_config_start(void)
 /*
     配置STA连接路由器
 */
-esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password, wifi_connected_cb_t cb)
+esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password)
 {
     if (ssid == NULL || strlen(ssid) == 0)
     {
         ESP_LOGE(TAG, "SSID 为空！");
         return ESP_FAIL;
-    }
-    // 保存回调函数
-    s_connect_cb = cb;
-    // 保存 SSID 和密码
-    strncpy(s_last_ssid, ssid, sizeof(s_last_ssid) - 1);
-    s_last_ssid[sizeof(s_last_ssid) - 1] = '\0';
-    if (password != NULL)
-    {
-        strncpy(s_last_password, password, sizeof(s_last_password) - 1);
-        s_last_password[sizeof(s_last_password) - 1] = '\0';
-    }
-    else
-    {
-        s_last_password[0] = '\0';
     }
     // 设置 WiFi 配置
     wifi_config_t wifi_config = {
@@ -140,14 +119,4 @@ esp_err_t wifi_mode_get(wifi_mode_t *mode)
         return ESP_ERR_INVALID_ARG;
     }
     return esp_wifi_get_mode(mode);
-}
-
-const char *wifi_mode_get_last_ssid(void)
-{
-    return s_last_ssid;
-}
-
-const char *wifi_mode_get_last_password(void)
-{
-    return s_last_password;
 }

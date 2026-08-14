@@ -39,7 +39,7 @@ static void uart_task(void *arg)
                     0);
                 if (len > 0)
                 {
-                    printf("UART RX: ");
+                     ESP_LOGI(TAG,"UART RX: ");
                     for (int i = 0; i < len; i++)
                     {
                         ESP_LOGI(TAG, "%02X ", rx_buffer[i]);

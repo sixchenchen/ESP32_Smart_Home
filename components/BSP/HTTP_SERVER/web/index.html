@@ -1,81 +1,84 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="zh-CN">
 
 <head>
-
     <meta charset="UTF-8">
-
-    <title>
-        ESP32 WIFI CONFIG
-    </title>
-
-    <link rel="stylesheet" href="./style.css">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 WiFi 配网</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
-
 <body>
+    <div class="container">
+        <!-- 头部 -->
+        <div class="header">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24" width="32" height="32">
+                    <path fill="currentColor"
+                        d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z" />
+                </svg>
+            </div>
+            <h1>ESP32 WiFi 配网</h1>
+            <p class="subtitle">请选择或输入 WiFi 信息</p>
+        </div>
 
+        <!-- 状态提示 -->
+        <div id="statusBar" class="status-bar status-idle">
+            <span id="statusText">📡 准备就绪，请扫描 WiFi</span>
+        </div>
 
-    <div class="box">
-
-
-        <h2>
-            ESP32 WiFi配置
-        </h2>
-
-
-
-        <label>
-            附近WiFi
-        </label>
-
-
-        <!-- WiFi列表 -->
-
-        <select id="wifi_list" size="5" onchange="select_wifi()">
-        </select>
-
-
-
-
-        <label>
-            SSID
-        </label>
-
-
-        <input id="ssid" type="text">
-
-
-
-        <label>
-            PASSWORD
-        </label>
-
-
-        <input id="password" type="password">
-
-
-
-        <button onclick="connect_wifi()">
-
-            连接WiFi
-
+        <!-- 扫描按钮 -->
+        <button id="scanBtn" class="btn btn-scan" onclick="scan_wifi()">
+            <span class="btn-icon">🔄</span> 扫描 WiFi
         </button>
 
+        <!-- WiFi 列表 -->
+        <div class="form-group">
+            <label class="form-label">📶 附近 WiFi</label>
+            <div class="wifi-list-wrapper">
+                <select id="wifi_list" size="6" onchange="select_wifi()">
+                    <option value="">点击上方扫描按钮搜索 WiFi</option>
+                </select>
+                <div id="scanningHint" class="scanning-hint hidden">
+                    <span class="spinner"></span> 正在扫描...
+                </div>
+            </div>
+        </div>
 
+        <!-- SSID -->
+        <div class="form-group">
+            <label class="form-label">🔑 SSID</label>
+            <input id="ssid" type="text" placeholder="请输入或选择 WiFi 名称" class="form-input">
+        </div>
 
-        <button class="scanf_wifi" onclick="scan_wifi()">
-            扫描WiFi
+        <!-- 密码 -->
+        <div class="form-group">
+            <label class="form-label">🔒 密码</label>
+            <div class="password-wrapper">
+                <input id="password" type="password" placeholder="请输入 WiFi 密码" class="form-input">
+                <button type="button" class="password-toggle" onclick="togglePassword()" title="显示/隐藏密码">
+                    👁️
+                </button>
+            </div>
+        </div>
+
+        <!-- 连接按钮 -->
+        <button id="connectBtn" class="btn btn-connect" onclick="connect_wifi()">
+            <span class="btn-icon">🚀</span> 连接 WiFi
         </button>
-        <button class="reset-btn" onclick="factoryReset()">
-            恢复出厂设置
-        </button>
-        <p id="msg"></p>
+
+        <!-- 底部操作栏 -->
+        <div class="bottom-actions">
+            <button class="btn btn-reset" onclick="factoryReset()">
+                <span class="btn-icon">🔄</span> 恢复出厂设置
+            </button>
+        </div>
+
+        <!-- 消息 -->
+        <div id="msg" class="message"></div>
     </div>
+
     <script src="app.js?v=2"></script>
 </body>
-
 
 </html>

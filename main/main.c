@@ -10,6 +10,7 @@
 #include "mos_protocol.h"
 #include "mqtt_manager.h"
 #include "string.h"
+#include "device_info.h"
 
 void app_main(void)
 {
@@ -22,6 +23,7 @@ void app_main(void)
     uart_drv_init();
     MOS_Protocol_Init();
     mqtt_manager_init();
+    device_print_info();
     while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(5000));

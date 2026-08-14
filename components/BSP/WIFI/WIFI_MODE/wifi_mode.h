@@ -21,7 +21,7 @@ esp_err_t wifi_mode_config_start(void);
 /*
     STA连接路由器
 */
-esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password, wifi_connected_cb_t cb);
+esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password);
 
 /*
     APSTA -> STA，连接成功后关闭AP
@@ -37,11 +37,4 @@ esp_err_t wifi_mode_switch_apsta(void);
     获取当前ESP32 wifi模式
 */
 esp_err_t wifi_mode_get(wifi_mode_t *mode);
-
-/*
-    获取当前连接的 SSID,PWD
-*/
-const char *wifi_mode_get_last_ssid(void);
-const char *wifi_mode_get_last_password(void);
-
 #endif

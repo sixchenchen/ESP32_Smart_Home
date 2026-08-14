@@ -9,13 +9,10 @@
 typedef enum
 {
     WIFI_MANAGER_IDLE,
-
     WIFI_MANAGER_AP_CONFIG,
-
     WIFI_MANAGER_CONNECTING,
-
     WIFI_MANAGER_CONNECTED,
-
+    WIFI_MANAGER_RECONNECTING,
     WIFI_MANAGER_ERROR,
 
 } wifi_manager_state_t;
@@ -34,7 +31,8 @@ void wifi_manager_start(void);
     获取当前状态
 */
 bool wifi_manager_is_connected(void);
-
+wifi_manager_state_t wifi_manager_get_state(void);
+const char *wifi_manager_get_ip_str(void);
 /*
     配网完成
 */

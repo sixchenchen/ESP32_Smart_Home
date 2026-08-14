@@ -15,15 +15,13 @@
 #define TOPIC_STATUS "device/" DEVICE_ID "/status"
 #define TOPIC_STATE "device/" DEVICE_ID "/state"
 #define TOPIC_EVENT "device/" DEVICE_ID "/event"
-#define TOPIC_ONLINE "device/" DEVICE_ID "/online"
-#define TOPIC_OFFLINE "device/" DEVICE_ID "/offline"
 #define TOPIC_HEART "device/" DEVICE_ID "/heart"
 
 // 遗嘱消息
-#define WILL_TOPIC TOPIC_OFFLINE
+#define WILL_TOPIC TOPIC_STATUS
 #define WILL_MSG "{\"device\":\"" DEVICE_ID "\",\"status\":\"offline\"}"
 #define WILL_QOS 1
-#define WILL_RETAIN 1
+#define WILL_RETAIN true
 
 // MQTT 命令定义
 #define CMD_MOS_SINGLE "mos"      // 单路控制

@@ -214,9 +214,7 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
 */
 void MOS_Protocol_Init(void)
 {
-    /*
-        UART接收一个字节后，调用MOS_Protocol_RxByte()
-    */
+    //  UART接收一个字节后，调用MOS_Protocol_RxByte()
     uart_drv_register_callback(MOS_Protocol_RxByte);
     //  初始化状态机
     state = WAIT_HEAD;

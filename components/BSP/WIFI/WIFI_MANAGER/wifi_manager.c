@@ -18,7 +18,6 @@ static const char *TAG = "wifi_manager";
 static bool wifi_init_flag = false;
 static bool wifi_connected = false;
 static bool wifi_factory_reset_flag = false;
-static bool mqtt_started = false;
 static wifi_manager_state_t wifi_state = WIFI_MANAGER_IDLE;
 uint16_t count;
 static char g_connecting_ssid[32] = {0};
@@ -32,10 +31,13 @@ static uint8_t retry_count = 0;
         snprintf(dst, size, "%s", src); \
     } while (0)
 
+static char g_ip_str[16] = {0};
+
 // 函数声明
 static void wifi_manager_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 static void wifi_manager_handle_disconnect(wifi_event_sta_disconnected_t *reason);
 static void wifi_manager_handle_connected(void);
+static void delayed_switch_to_sta_task(void *arg);
 
 // WIFI事件处理
 static void wifi_manager_event_handler(
@@ -71,6 +73,7 @@ static void wifi_manager_event_handler(
         {
             ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
             ESP_LOGI(TAG, "GOT IP:" IPSTR, IP2STR(&event->ip_info.ip));
+            snprintf(g_ip_str, sizeof(g_ip_str), IPSTR, IP2STR(&event->ip_info.ip));
             wifi_manager_handle_connected();
         }
     }
@@ -79,154 +82,83 @@ static void wifi_manager_event_handler(
 // 连接成功处理
 static void wifi_manager_handle_connected(void)
 {
-
-    ESP_LOGI(TAG,
-             "wifi connected");
+    ESP_LOGI(TAG, "wifi connected");
     wifi_factory_reset_flag = false;
     wifi_connected = true;
-
     retry_count = 0;
-
-    wifi_state =
-        WIFI_MANAGER_CONNECTED;
-
-    /*
-        保存WiFi配置
-    */
-
+    wifi_state = WIFI_MANAGER_CONNECTED;
+    // 保存WiFi配置
     if (strlen(g_connecting_ssid) > 0)
     {
-
-        wifi_config_save(
-            g_connecting_ssid,
-            g_connecting_password);
-
-        ESP_LOGI(
-            TAG,
-            "save wifi:%s",
-            g_connecting_ssid);
+        wifi_config_save(g_connecting_ssid, g_connecting_password);
+        ESP_LOGI(TAG, "save wifi:%s", g_connecting_ssid);
     }
 
-    /*
-        清除临时数据
-    */
-
-    memset(
-        g_connecting_ssid,
-        0,
-        sizeof(g_connecting_ssid));
-
-    memset(
-        g_connecting_password,
-        0,
-        sizeof(g_connecting_password));
-
-    /*
-        APSTA -> STA
-    */
-
-    wifi_mode_switch_sta();
-
-    /*
-        MQTT启动
-    */
-
-    if (!mqtt_started)
-    {
-        mqtt_service_init();
-
-        mqtt_manager_start();
-
-        mqtt_started = true;
-    }
+    //  清除临时数据
+    memset(g_connecting_ssid, 0, sizeof(g_connecting_ssid));
+    memset(g_connecting_password, 0, sizeof(g_connecting_password));
+    // 创建连接成功延时8s
+    xTaskCreate(delayed_switch_to_sta_task, "delay_sta", 2048, NULL, 5, NULL);
+    //  APSTA -> STA
+    // wifi_mode_switch_sta();
+    //  MQTT启动
+    mqtt_service_init();
+    mqtt_manager_on_wifi_connected();
 }
 
 // 断开处理
-static void wifi_manager_handle_disconnect(
-    wifi_event_sta_disconnected_t *reason)
+static void wifi_manager_handle_disconnect(wifi_event_sta_disconnected_t *reason)
 {
-
     if (wifi_factory_reset_flag)
     {
         ESP_LOGW(TAG, "factory reset ignore reconnect");
         return;
     }
-    wifi_connected = false;
 
+    wifi_connected = false;
+    mqtt_manager_on_wifi_disconnected();
     ESP_LOGW(TAG, "disconnect reason=%d", reason->reason);
 
-    /*
-        密码错误
-    */
-
+    // 密码错误 → 立即进入配网模式
     if (reason->reason == WIFI_REASON_AUTH_FAIL || reason->reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT)
     {
-
-        ESP_LOGE(
-            TAG,
-            "password error");
-
-        /*
-            清除错误缓存
-        */
-
-        memset(
-            g_connecting_ssid,
-            0,
-            sizeof(g_connecting_ssid));
-
-        memset(
-            g_connecting_password,
-            0,
-            sizeof(g_connecting_password));
-
-        wifi_state =
-            WIFI_MANAGER_AP_CONFIG;
-
+        wifi_factory_reset_flag = false;
+        ESP_LOGE(TAG, "password error, enter AP config mode");
+        memset(g_connecting_ssid, 0, sizeof(g_connecting_ssid));
+        memset(g_connecting_password, 0, sizeof(g_connecting_password));
+        wifi_state = WIFI_MANAGER_AP_CONFIG;
         wifi_mode_switch_apsta();
-
         wifi_mode_config_start();
-
         return;
     }
 
     retry_count++;
 
-    /*
-        自动重连
-    */
-
     if (retry_count < WIFI_MAX_RETRY)
     {
-
-        ESP_LOGI(
-            TAG,
-            "retry wifi %d/%d",
-            retry_count,
-            WIFI_MAX_RETRY);
-
-        vTaskDelay(
-            pdMS_TO_TICKS(3000));
-
+        wifi_state = WIFI_MANAGER_RECONNECTING;
+        ESP_LOGI(TAG, "wait 3s before reconnect (retry %d/%d)", retry_count, WIFI_MAX_RETRY);
+        vTaskDelay(pdMS_TO_TICKS(3000));
         esp_wifi_connect();
     }
-
     else
     {
-
-        ESP_LOGW(
-            TAG,
-            "retry failed");
-
+        ESP_LOGW(TAG, "max retry reached, enter AP config mode");
+        wifi_factory_reset_flag = false;
         retry_count = 0;
-
-        wifi_state =
-            WIFI_MANAGER_AP_CONFIG;
-
+        wifi_state = WIFI_MANAGER_AP_CONFIG;
         wifi_mode_switch_apsta();
-
         wifi_mode_config_start();
     }
+}
+
+// 迟切换 STA 任务，给前端留 8 秒时间
+static void delayed_switch_to_sta_task(void *arg)
+{
+    vTaskDelay(pdMS_TO_TICKS(4000));
+    ESP_LOGI(TAG, "delay 8s, now switch to STA mode");
+    wifi_mode_switch_sta();
+    vTaskDelete(NULL);
 }
 // WiFi 初始化
 esp_err_t wifi_manager_init(void)
@@ -235,7 +167,6 @@ esp_err_t wifi_manager_init(void)
     {
         return ESP_OK;
     }
-
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -270,12 +201,10 @@ void wifi_manager_start(void)
     {
         ESP_LOGI(TAG, "found wifi: %s", ssid);
         wifi_state = WIFI_MANAGER_CONNECTING;
-
         // 使用 snprintf 安全复制
         snprintf(g_connecting_ssid, sizeof(g_connecting_ssid), "%s", ssid);
         snprintf(g_connecting_password, sizeof(g_connecting_password), "%s", password);
-
-        wifi_mode_sta_connect(ssid, password, NULL);
+        wifi_mode_sta_connect(ssid, password);
     }
     else
     {
@@ -298,7 +227,7 @@ void wifi_manager_set_wifi(const char *ssid, const char *password)
     retry_count = 0;
     wifi_state = WIFI_MANAGER_CONNECTING;
 
-    esp_err_t ret = wifi_mode_sta_connect(ssid, password, NULL);
+    esp_err_t ret = wifi_mode_sta_connect(ssid, password);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "WiFi 连接启动失败");
@@ -333,8 +262,9 @@ void wifi_manager_clear_config(void)
 
 void wifi_manager_factory_reset(void)
 {
-
     ESP_LOGW(TAG, "factory reset");
+    // 停止 MQTT
+    mqtt_manager_stop();
     // 禁止自动重连
     wifi_factory_reset_flag = true;
     // 停止wifi
@@ -350,5 +280,17 @@ void wifi_manager_factory_reset(void)
     wifi_state = WIFI_MANAGER_AP_CONFIG;
     wifi_mode_switch_apsta();
     wifi_mode_config_start();
+    vTaskDelay(pdMS_TO_TICKS(500));
+    wifi_factory_reset_flag = false;
     ESP_LOGI(TAG, "enter wifi config mode");
+}
+// 状态查询接口
+wifi_manager_state_t wifi_manager_get_state(void)
+{
+    return wifi_state;
+}
+
+const char *wifi_manager_get_ip_str(void)
+{
+    return (g_ip_str[0] != '\0') ? g_ip_str : NULL;
 }

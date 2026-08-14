@@ -1,89 +1,419 @@
+/* ========== 全局重置 ========== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
-
-    background: #eeeeee;
-
-    font-family:
-        Arial;
-
-}
-
-
-.box {
-
-    width: 300px;
-
-    margin: 80px auto;
-
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #0f0f1a;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     padding: 20px;
+}
 
-    background: white;
+/* ========== 容器 ========== */
+.container {
+    width: 100%;
+    max-width: 420px;
+    background: linear-gradient(145deg, #1a1a2e, #16213e);
+    border-radius: 24px;
+    padding: 30px 28px 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
 
+/* ========== 头部 ========== */
+.header {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.header-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 16px;
+    margin-bottom: 12px;
+    color: #fff;
+}
+
+.header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+
+.header .subtitle {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 4px;
+}
+
+/* ========== 状态栏 ========== */
+.status-bar {
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 13px;
+    text-align: center;
+    margin-bottom: 18px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.status-idle {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.status-scanning {
+    background: rgba(102, 126, 234, 0.2);
+    color: #667eea;
+}
+
+.status-connecting {
+    background: rgba(255, 193, 7, 0.15);
+    color: #ffc107;
+}
+
+.status-success {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+}
+
+.status-error {
+    background: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+}
+
+/* ========== 按钮 ========== */
+.btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    color: #fff;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-icon {
+    font-size: 18px;
+}
+
+/* 扫描按钮 */
+.btn-scan {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    margin-bottom: 14px;
+}
+
+.btn-scan:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.35);
+}
+
+.btn-scan:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* 连接按钮 */
+.btn-connect {
+    background: linear-gradient(135deg, #43a047, #2e7d32);
+    margin-top: 4px;
+}
+
+.btn-connect:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(76, 175, 80, 0.35);
+}
+
+.btn-connect:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* 恢复出厂 */
+.btn-reset {
+    background: rgba(244, 67, 54, 0.15);
+    color: #ef5350;
+    border: 1px solid rgba(244, 67, 54, 0.2);
+    font-size: 13px;
+    padding: 10px;
+}
+
+.btn-reset:hover {
+    background: rgba(244, 67, 54, 0.25);
+}
+
+/* ========== 表单 ========== */
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 6px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
-
+    font-size: 14px;
+    color: #fff;
+    transition: all 0.3s ease;
+    outline: none;
 }
 
-
-input {
-
-    width: 100%;
-
-    height: 30px;
-
-    margin-bottom: 15px;
-
+.form-input:focus {
+    border-color: #667eea;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
-
-
-button {
-
-    width: 100%;
-
-    height: 35px;
-
-    background: #2196f3;
-
-    color: white;
-
-    border: 0;
-
+.form-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
 }
 
-button #class {
-    background: #539c3d;
+.form-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ========== WiFi 列表 ========== */
+.wifi-list-wrapper {
+    position: relative;
 }
 
 #wifi_list {
-
     width: 100%;
-
-    height: 120px;
-
-    margin-bottom: 15px;
-
-    font-size: 16px;
-
+    height: 140px;
+    padding: 6px 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.3s ease;
 }
 
-.reset-btn {
+#wifi_list:focus {
+    border-color: #667eea;
+}
 
-    margin-top: 20px;
+#wifi_list option {
+    padding: 8px 14px;
+    background: #1a1a2e;
+    border-radius: 6px;
+    margin: 2px 0;
+}
 
-    background: #ff4444;
+#wifi_list option:hover {
+    background: rgba(102, 126, 234, 0.2);
+}
 
-    color: white;
+#wifi_list option:checked {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: #fff;
+}
 
+/* 扫描提示 */
+.scanning-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+}
+
+.scanning-hint.hidden {
+    display: none;
+}
+
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ========== 密码显示切换 ========== */
+.password-wrapper {
+    position: relative;
+}
+
+.password-wrapper .form-input {
+    padding-right: 48px;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
     border: none;
-
-    padding: 10px 20px;
-
-    border-radius: 5px;
-
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
 }
 
+.password-toggle:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.05);
+}
 
-.reset-btn:hover {
+/* ========== 消息 ========== */
+.message {
+    /* 固定最小高度，空内容时也不塌陷 */
+    min-height: 44px;
+    padding: 10px 14px;
+    margin-top: 16px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.5;
+    box-sizing: border-box;
 
-    background: #cc0000;
+    /* 默认隐藏但保留占位（不用 display:none） */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease;
+    transform: translateY(-4px);
+}
 
+/* 显示状态 */
+.message.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* 成功样式 */
+.message.success {
+    background: rgba(40, 167, 69, 0.1);
+    color: #155724;
+    border: 1px solid rgba(40, 167, 69, 0.25);
+}
+
+/* 错误样式 */
+.message.error {
+    background: rgba(220, 53, 69, 0.1);
+    color: #721c24;
+    border: 1px solid rgba(220, 53, 69, 0.25);
+}
+
+.message.show {
+    display: block;
+}
+
+.message.success {
+    background: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.2);
+    display: block;
+}
+
+.message.error {
+    background: rgba(244, 67, 54, 0.15);
+    color: #ef5350;
+    border: 1px solid rgba(244, 67, 54, 0.2);
+    display: block;
+}
+
+.message.info {
+    background: rgba(102, 126, 234, 0.15);
+    color: #667eea;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+    display: block;
+}
+
+/* ========== 去掉浏览器原生密码显示按钮 ========== */
+
+/* Chrome, Safari, Edge */
+input[type="password"]::-webkit-reveal {
+    display: none !important;
+}
+
+/* Edge (Chromium) */
+input[type="password"]::-ms-reveal {
+    display: none !important;
+}
+
+/* Firefox 不显示，无需处理 */
+
+/* 去掉自动填充图标 */
+input::-webkit-credentials-auto-fill-button {
+    display: none !important;
+}
+
+/* ========== 底部 ========== */
+.bottom-actions {
+    margin-top: 18px;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 480px) {
+    .container {
+        padding: 20px 16px 18px;
+        border-radius: 16px;
+    }
+
+    .header h1 {
+        font-size: 19px;
+    }
+
+    .header-icon {
+        width: 48px;
+        height: 48px;
+    }
+
+    .btn {
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+
+    #wifi_list {
+        height: 120px;
+    }
 }

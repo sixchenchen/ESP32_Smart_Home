@@ -6,6 +6,7 @@
 #include "wifi_manager.h"
 #include "wifi_scan.h"
 
+
 static const char *TAG = "http_server";
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
@@ -76,9 +77,56 @@ static esp_err_t wifi_config_handler(httpd_req_t *req)
     strcpy(ssid, ssid_json->valuestring);
     strcpy(password, pass_json->valuestring);
     ESP_LOGI(TAG, "SSID:%s PASSWORD:%s", ssid, password);
+
     wifi_manager_set_wifi(ssid, password);
     cJSON_Delete(root);
-    httpd_resp_sendstr(req, "wifi connecting...");
+    /* 返回 JSON */
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddStringToObject(resp, "status", "connecting");
+    cJSON_AddStringToObject(resp, "msg", "WiFi连接中，请稍候...");
+    char *json = cJSON_PrintUnformatted(resp);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, json, strlen(json));
+    free(json);
+    cJSON_Delete(resp);
+    return ESP_OK;
+}
+// WiFi 状态查询接口
+static esp_err_t wifi_status_handler(httpd_req_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+    wifi_manager_state_t state = wifi_manager_get_state();
+
+    switch (state)
+    {
+    case WIFI_MANAGER_CONNECTED:
+    {
+        cJSON_AddStringToObject(root, "status", "connected");
+        const char *ip = wifi_manager_get_ip_str();
+        cJSON_AddStringToObject(root, "ip", ip ? ip : "");
+        cJSON_AddStringToObject(root, "msg", "WiFi连接成功");
+        break;
+    }
+    case WIFI_MANAGER_CONNECTING:
+        cJSON_AddStringToObject(root, "status", "connecting");
+        cJSON_AddStringToObject(root, "msg", "正在连接WiFi...");
+        break;
+    case WIFI_MANAGER_AP_CONFIG:
+        cJSON_AddStringToObject(root, "status", "failed");
+        cJSON_AddStringToObject(root, "reason", "连接失败，请检查密码或信号");
+        cJSON_AddStringToObject(root, "msg", "连接失败");
+        break;
+    default:
+        cJSON_AddStringToObject(root, "status", "idle");
+        cJSON_AddStringToObject(root, "msg", "等待配置");
+        break;
+    }
+
+    char *json = cJSON_PrintUnformatted(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, json, strlen(json));
+    free(json);
+    cJSON_Delete(root);
     return ESP_OK;
 }
 
@@ -198,15 +246,18 @@ void http_server_start(void)
             .user_ctx = NULL};
     httpd_register_uri_handler(server, &wifi_scan);
 
+    httpd_uri_t wifi_status_uri = {
+        .uri = "/wifi_status",
+        .method = HTTP_GET,
+        .handler = wifi_status_handler,
+        .user_ctx = NULL};
+    httpd_register_uri_handler(server, &wifi_status_uri);
+
     httpd_uri_t factory_reset_uri =
         {
-
             .uri = "/factory_reset",
-
             .method = HTTP_GET,
-
             .handler = factory_reset_handler,
-
             .user_ctx = NULL
 
         };
