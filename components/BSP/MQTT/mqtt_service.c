@@ -9,6 +9,9 @@
 #include <string.h>
 #include "esp_timer.h"
 #include "mqtt_config.h"
+#include "mqtt_manager.h"
+#include "mqtt_topic.h"
+#include "mqtt_message.h"
 
 static const char *TAG = "MQTT_SERVICE";
 static TaskHandle_t heartbeat_handle = NULL;
@@ -30,17 +33,9 @@ static void mqtt_publish_status(bool online);
 */
 static void mqtt_publish_status(bool online)
 {
-    char msg[128];
-    if (online)
-    {
-        snprintf(msg, sizeof(msg), "{\"device\":\"%s\",\"status\":\"online\"}", DEVICE_ID);
-    }
-    else
-    {
-        snprintf(msg, sizeof(msg), "{\"device\":\"%s\",\"status\":\"offline\"}", DEVICE_ID);
-    }
-
-    mqtt_manager_publish(TOPIC_STATUS, msg, strlen(msg), 1, true);
+    char *msg = mqtt_message_create_status(online);
+    mqtt_manager_publish(mqtt_topic_status(), msg, strlen(msg), 1, true);
+    free(msg);
 }
 
 /*
@@ -49,8 +44,7 @@ static void mqtt_publish_status(bool online)
 static void mqtt_control_callback(const char *topic, const uint8_t *data, int len)
 {
     ESP_LOGI(TAG, "topic: %s, data: %.*s", topic, len, data);
-
-    if (strcmp(topic, TOPIC_CONTROL) != 0)
+    if (strcmp(topic, mqtt_topic_control()) != 0)
     {
         return;
     }
@@ -73,7 +67,7 @@ static void mqtt_control_callback(const char *topic, const uint8_t *data, int le
     }
 
     // 获取命令字段
-    cJSON *cmd = cJSON_GetObjectItem(root, "cmd");
+    cJSON *cmd = cJSON_GetObjectItem(root, JSON_CMD);
     if (!cmd || !cJSON_IsString(cmd))
     {
         ESP_LOGE(TAG, "缺少 cmd 字段");
@@ -108,8 +102,8 @@ static void mqtt_control_callback(const char *topic, const uint8_t *data, int le
 
 static void mqtt_handle_mos_control(cJSON *root)
 {
-    cJSON *channel = cJSON_GetObjectItem(root, "channel");
-    cJSON *state = cJSON_GetObjectItem(root, "state");
+    cJSON *channel = cJSON_GetObjectItem(root, JSON_CHANNEL);
+    cJSON *state = cJSON_GetObjectItem(root, JSON_STATE);
 
     if (!channel || !state)
     {
@@ -149,15 +143,13 @@ static void mqtt_handle_mos_control(cJSON *root)
 */
 static void mqtt_handle_mos_all_control(cJSON *root)
 {
-    cJSON *state = cJSON_GetObjectItem(root, "state");
-
+    cJSON *state = cJSON_GetObjectItem(root, JSON_STATE);
     if (!state || !cJSON_IsNumber(state))
     {
         ESP_LOGE(TAG, "缺少 state 字段");
         mqtt_publish_error(1007, "Missing state field");
         return;
     }
-
     MOS_All_Control(state->valueint ? MOS_ON : MOS_OFF);
     mqtt_service_publish_state();
 }
@@ -196,15 +188,19 @@ static void mqtt_status_callback(mqtt_state_t state)
 */
 static void heartbeat_task(void *arg)
 {
-    char msg[128];
     while (1)
     {
-        snprintf(msg, sizeof(msg),
-                 "{\"device\":\"%s\",\"uptime\":%lld,\"status\":\"online\"}",
-                 DEVICE_ID,
-                 esp_timer_get_time() / 1000000);
-
-        mqtt_manager_publish(TOPIC_HEART, msg, strlen(msg), 0, false);
+        char *msg = mqtt_message_create_heartbeat(esp_timer_get_time() / 1000000);
+        if (msg != NULL)
+        {
+            mqtt_manager_publish(
+                mqtt_topic_heart(),
+                msg,
+                strlen(msg),
+                0,
+                false);
+            free(msg);
+        }
         vTaskDelay(pdMS_TO_TICKS(HEARTBEAT_INTERVAL_MS));
     }
 }
@@ -214,57 +210,48 @@ static void heartbeat_task(void *arg)
 */
 static void mqtt_start_heartbeat(void)
 {
-    if (heartbeat_handle == NULL)
-    {
-        xTaskCreate(heartbeat_task, "mqtt_heartbeat", 4096, NULL, 5, &heartbeat_handle);
-    }
+    if (heartbeat_handle)
+        return;
+    xTaskCreate(heartbeat_task, "mqtt_heart", 4096, NULL, 5, &heartbeat_handle);
 }
 /*
     停止心跳
 */
 static void mqtt_stop_heartbeat(void)
 {
-    if (heartbeat_handle != NULL)
+
+    if (heartbeat_handle)
     {
         vTaskDelete(heartbeat_handle);
         heartbeat_handle = NULL;
-        ESP_LOGI(TAG, "心跳已停止");
     }
 }
 
 /*
     发布 MOS 事件
 */
-static void mqtt_publish_mos_event(uint8_t channel, uint8_t state)
+static void mqtt_publish_mos_event(
+    uint8_t ch,
+    uint8_t state)
 {
-    char msg[64];
-    snprintf(msg, sizeof(msg),
-             "{\"type\":\"%s\",\"channel\":%d,\"state\":%d}",
-             EVENT_MOS_CHANGE, channel, state);
-
-    mqtt_manager_publish(TOPIC_EVENT, msg, strlen(msg), 1, false);
+    char *msg = mqtt_message_create_mos_event(ch, state);
+    mqtt_manager_publish(mqtt_topic_event(), msg, strlen(msg), 1, false);
+    free(msg);
 }
 
 /*
     发布错误事件
 */
+
 static void mqtt_publish_error(uint16_t code, const char *msg)
 {
-    char data[128];
-    snprintf(
-        data,
-        sizeof(data),
-        "{"
-        "\"type\":\"error\","
-        "\"code\":%d,"
-        "\"msg\":\"%s\""
-        "}",
-        code,
-        msg);
-
-    mqtt_manager_publish(TOPIC_EVENT, data, strlen(data), 1, false);
-
-    ESP_LOGW(TAG, "MQTT ERROR:%s", data);
+    char *data = mqtt_message_create_error(code, msg);
+    if (data != NULL)
+    {
+        mqtt_manager_publish(mqtt_topic_event(), data, strlen(data), 1, false);
+        free(data);
+    }
+    ESP_LOGW(TAG, "MQTT ERROR: code=%d, msg=%s", code, msg);
 }
 
 /*
@@ -286,7 +273,7 @@ void mqtt_service_publish_state(void)
              (state >> 5) & 1,
              (state >> 6) & 1,
              (state >> 7) & 1);
-    mqtt_manager_publish(TOPIC_STATE, msg, strlen(msg), 1, true);
+    mqtt_manager_publish(mqtt_topic_status(), msg, strlen(msg), 1, true);
 }
 
 /*
@@ -302,6 +289,12 @@ void mqtt_service_publish_mos_event(uint8_t channel, uint8_t state)
 */
 void mqtt_service_init(void)
 {
+    esp_err_t ret = mqtt_manager_init();
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "MQTT 初始化失败");
+        return;
+    }
     mqtt_manager_register_callback(mqtt_control_callback);
     mqtt_manager_register_status_callback(mqtt_status_callback);
     ESP_LOGI(TAG, "MQTT Service 初始化完成");

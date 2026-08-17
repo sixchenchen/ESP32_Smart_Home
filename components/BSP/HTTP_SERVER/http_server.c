@@ -6,7 +6,6 @@
 #include "wifi_manager.h"
 #include "wifi_scan.h"
 
-
 static const char *TAG = "http_server";
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
@@ -213,30 +212,31 @@ void http_server_start(void)
             .method = HTTP_GET,
             .handler = index_handler,
             .user_ctx = NULL};
-    httpd_register_uri_handler(server, &index_uri);
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &index_uri));
+
     httpd_uri_t css_uri =
         {
             .uri = "/style.css",
             .method = HTTP_GET,
             .handler = style_handler,
             .user_ctx = NULL};
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &css_uri));
 
-    httpd_register_uri_handler(server, &css_uri);
     httpd_uri_t js_uri =
         {
             .uri = "/app.js",
             .method = HTTP_GET,
             .handler = js_handler,
             .user_ctx = NULL};
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &js_uri));
 
-    httpd_register_uri_handler(server, &js_uri);
     httpd_uri_t wifi_uri =
         {
             .uri = "/wifi_config",
             .method = HTTP_POST,
             .handler = wifi_config_handler,
             .user_ctx = NULL};
-    httpd_register_uri_handler(server, &wifi_uri);
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &wifi_uri));
 
     httpd_uri_t wifi_scan =
         {
@@ -244,14 +244,14 @@ void http_server_start(void)
             .method = HTTP_GET,
             .handler = wifi_scan_handler,
             .user_ctx = NULL};
-    httpd_register_uri_handler(server, &wifi_scan);
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &wifi_scan));
 
     httpd_uri_t wifi_status_uri = {
         .uri = "/wifi_status",
         .method = HTTP_GET,
         .handler = wifi_status_handler,
         .user_ctx = NULL};
-    httpd_register_uri_handler(server, &wifi_status_uri);
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &wifi_status_uri));
 
     httpd_uri_t factory_reset_uri =
         {
@@ -261,7 +261,7 @@ void http_server_start(void)
             .user_ctx = NULL
 
         };
-
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &factory_reset_uri));
+
     ESP_LOGI(TAG, "HTTP SERVER START");
 }

@@ -15,14 +15,15 @@
 
 static const char *TAG = "wifi_manager";
 
+uint16_t count;
 static bool wifi_init_flag = false;
 static bool wifi_connected = false;
 static bool wifi_factory_reset_flag = false;
-static wifi_manager_state_t wifi_state = WIFI_MANAGER_IDLE;
-uint16_t count;
 static char g_connecting_ssid[32] = {0};
 static char g_connecting_password[64] = {0};
+static char g_ip_str[16] = {0};
 static uint8_t retry_count = 0;
+static wifi_manager_state_t wifi_state = WIFI_MANAGER_IDLE;
 
 // 安全复制字符串
 #define SAFE_STRNCPY(dst, src, size)    \
@@ -30,8 +31,6 @@ static uint8_t retry_count = 0;
     {                                   \
         snprintf(dst, size, "%s", src); \
     } while (0)
-
-static char g_ip_str[16] = {0};
 
 // 函数声明
 static void wifi_manager_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
@@ -79,7 +78,9 @@ static void wifi_manager_event_handler(
     }
 }
 
-// 连接成功处理
+/*
+    连接成功处理
+*/
 static void wifi_manager_handle_connected(void)
 {
     ESP_LOGI(TAG, "wifi connected");
@@ -97,10 +98,8 @@ static void wifi_manager_handle_connected(void)
     //  清除临时数据
     memset(g_connecting_ssid, 0, sizeof(g_connecting_ssid));
     memset(g_connecting_password, 0, sizeof(g_connecting_password));
-    // 创建连接成功延时8s
+    // 创建连接成功延时4s
     xTaskCreate(delayed_switch_to_sta_task, "delay_sta", 2048, NULL, 5, NULL);
-    //  APSTA -> STA
-    // wifi_mode_switch_sta();
     //  MQTT启动
     mqtt_service_init();
     mqtt_manager_on_wifi_connected();
@@ -152,7 +151,7 @@ static void wifi_manager_handle_disconnect(wifi_event_sta_disconnected_t *reason
     }
 }
 
-// 迟切换 STA 任务，给前端留 8 秒时间
+// 迟切换 STA 任务，给前端留 4 秒时间
 static void delayed_switch_to_sta_task(void *arg)
 {
     vTaskDelay(pdMS_TO_TICKS(4000));
@@ -196,7 +195,6 @@ void wifi_manager_start(void)
 {
     char ssid[32] = {0};
     char password[64] = {0};
-
     if (wifi_config_load(ssid, password) == ESP_OK)
     {
         ESP_LOGI(TAG, "found wifi: %s", ssid);
