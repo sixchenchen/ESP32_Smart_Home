@@ -1,12 +1,32 @@
-#ifndef KEY_H
-#define KEY_H
+#ifndef __KEY_H__
+#define __KEY_H__
 
 #include "esp_err.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
-#define KEY_LONG_PRESS_TIME_MS 2000
+/*
+    按键事件
+*/
+typedef enum
+{
 
-#define BOOT_INT_GPIO_PIN GPIO_NUM_0
+    KEY_EVENT_NONE = 0,
 
+    KEY_EVENT_SHORT_PRESS,
+
+    KEY_EVENT_LONG_PRESS,
+
+} key_event_t;
+
+/*
+    初始化KEY
+*/
 esp_err_t key_init(void);
+
+/*
+    获取KEY事件队列
+*/
+QueueHandle_t key_get_queue(void);
 
 #endif
