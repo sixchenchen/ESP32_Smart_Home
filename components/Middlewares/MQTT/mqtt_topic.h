@@ -11,8 +11,12 @@ const char *mqtt_topic_event(void);
 
 const char *mqtt_topic_state(void);
 
+const char *mqtt_topic_mos_state(void);
+
 const char *mqtt_topic_heart(void);
 
 const char *mqtt_topic_will(void);
+
+const char *mqtt_topic_sensor(void);
 
 #endif

@@ -1,22 +1,33 @@
 #include "mos_protocol.h"
 #include "mos.h"
 #include "uart_drv.h"
+#include "esp_log.h"
 
-// 当前状态
+static const char *TAG = "MOS_PROTOCOL";
+
+//   状态机枚举
+typedef enum
+{
+    WAIT_HEAD = 0,
+    WAIT_ADDR,
+    WAIT_CMD,
+    WAIT_LEN,
+    WAIT_DATA,
+    WAIT_CRC,
+} MOS_RX_STATE;
+
+//   静态变量
 static MOS_RX_STATE state = WAIT_HEAD;
-// 当前最大帧数：HEAD ADDRESS CMD LEN DATA(8) 共12字节 CRC单独接收
 static uint8_t frame[4 + MOS_MAX_DATA_LEN];
 static uint8_t frame_index = 0;
-// DATA长度
 static uint8_t data_len = 0;
-/*
-  静态函数声明
-*/
+
+//   静态函数声明
 static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len);
 static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len);
 static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len);
 
-// CRC计算(范围)： ADDRESS CMD LEN DATA 不包含HEAD
+//   CRC计算
 static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len)
 {
     uint8_t crc = 0;
@@ -27,11 +38,12 @@ static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len)
     return crc;
 }
 
-// 发送回复
+//   发送回复
 static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len)
 {
     uint8_t tx[16];
     uint8_t index = 0;
+
     // HEAD
     tx[index++] = MOS_FRAME_HEAD;
     // ADDRESS
@@ -45,301 +57,254 @@ static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len)
     {
         tx[index++] = data[i];
     }
-    // CRC计算： ADDRESS  CMD LEN DATA
+    // CRC计算（ADDRESS + CMD + LEN + DATA）
     tx[index] = MOS_Calc_CRC(&tx[1], index - 1);
     index++;
-    // UART发送
     uart_drv_send(tx, index);
 }
 
-/*
-    执行完整协议帧
-    frame格式：
-    frame[0] = HEAD
-    frame[1] = ADDRESS
-    frame[2] = CMD
-    frame[3] = LEN
-    frame[4...] = DATA
-    frame_len不包含CRC
-*/
+//   执行完整协议帧
 static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
 {
-    uint8_t addr;
-    uint8_t cmd;
-    uint8_t len;
-    // 最小：HEAD + ADDRESS + CMD + LEN = 4
+    uint8_t addr, cmd, len;
+    ESP_LOGI(TAG, "Handle: len=%d, cmd=0x%02X", frame_len, buf[2]);
+    // 最小长度检查：HEAD + ADDRESS + CMD + LEN = 4
     if (frame_len < 4)
     {
+        ESP_LOGW(TAG, "帧太短: %d", frame_len);
         return;
     }
-    // HEAD
+
+    // HEAD检查
     if (buf[0] != MOS_FRAME_HEAD)
     {
+        ESP_LOGW(TAG, "帧头错误: 0x%02X", buf[0]);
         return;
     }
-    // ADDRESS
+
+    // ADDRESS检查
     addr = buf[1];
     if (addr != MOS_DEVICE_ADDR)
     {
+        ESP_LOGW(TAG, "地址错误: 0x%02X", addr);
         return;
     }
-    //  CMD
+
+    // 解析命令和长度
     cmd = buf[2];
-    // LEN
     len = buf[3];
-    // 防止DATA越界
+
     if (len > MOS_MAX_DATA_LEN)
     {
+        ESP_LOGW(TAG, "数据长度超限: %d", len);
         return;
     }
-    // 判断: HEAD ADDRESS CMD LEN DATA， 总长度 = 4 + LEN
+
     if (frame_len != (uint8_t)(4 + len))
     {
+        ESP_LOGW(TAG, "帧长度不匹配: 期望%d, 实际%d", 4 + len, frame_len);
         return;
     }
+
     // 根据CMD执行
     switch (cmd)
     {
-    /*
-        单路MOS控制
-        DATA[0] = channel
-        DATA[1] = state
-    */
+
+    //   单路MOS控制
     case CMD_MOS_CONTROL:
     {
-        uint8_t channel;
-        uint8_t mos_state;
-        // 必须有两个DATA
         if (len != 2)
         {
+            ESP_LOGW(TAG, "单路控制数据长度错误: %d", len);
             return;
         }
-        channel = buf[4];
-        mos_state = buf[5];
-        // 通道检查
+        uint8_t channel = buf[4];
+        uint8_t mos_state = buf[5];
+
         if (channel >= MOS_CHANNEL_NUM)
         {
+            ESP_LOGE(TAG, "通道越界: %d", channel);
             return;
         }
-        // 状态只允许： 0 = OFF, 1 = ON
         if (mos_state != MOS_OFF && mos_state != MOS_ON)
         {
+            ESP_LOGE(TAG, "状态错误: %d", mos_state);
             return;
         }
-        // 执行控制
+
+        ESP_LOGI(TAG, "单路控制: CH%d -> %s", channel, mos_state ? "ON" : "OFF");
         MOS_Control(channel, (MOS_State)mos_state);
+        break;
     }
-    break;
-    // 全部MOS控制DATA[0]: 0 = OFF,1 = ON
+
+    //   全部MOS控制
     case CMD_MOS_ALL_CONTROL:
     {
-        uint8_t mos_state;
-        // 必须1个DATA
         if (len != 1)
         {
+            ESP_LOGW(TAG, "全部控制数据长度错误: %d", len);
             return;
         }
-        mos_state = buf[4];
-        // 状态检查
+        uint8_t mos_state = buf[4];
         if (mos_state != MOS_OFF && mos_state != MOS_ON)
         {
+            ESP_LOGE(TAG, "状态错误: %d", mos_state);
             return;
         }
-        //  全部控制
+        ESP_LOGI(TAG, "全部控制: %s", mos_state ? "ON" : "OFF");
         MOS_All_Control((MOS_State)mos_state);
+        break;
     }
-    break;
-    /*
-        8路状态设置
-        DATA[0]:
-        bit0 -> MOS0
-        bit1 -> MOS1
-        ...
-        bit7 -> MOS7
-        例如：0x05-> 00000101
-        MOS0 ON
-        MOS1 OFF
-        MOS2 ON
-    */
+
+    //   8路控制多个设置
     case CMD_MOS_STATE_SET:
     {
-        uint8_t new_state;
-        // 必须1个DATA
         if (len != 1)
         {
+            ESP_LOGW(TAG, "状态设置数据长度错误: %d", len);
             return;
         }
-        new_state = buf[4];
-        //  根据bit控制8路
+        uint8_t new_state = buf[4];
+        ESP_LOGI(TAG, "状态设置: 0x%02X", new_state);
         for (uint8_t i = 0; i < MOS_CHANNEL_NUM; i++)
         {
-            if (new_state & (1U << i))
-            {
-                MOS_Control(i, MOS_ON);
-            }
-            else
-            {
-                MOS_Control(i, MOS_OFF);
-            }
+            MOS_Control(i, (new_state & (1U << i)) ? MOS_ON : MOS_OFF);
         }
+        break;
     }
-    break;
 
-    // 查询MOS状态 LEN = 0
+    //   查询MOS状态
     case CMD_MOS_GET:
     {
-        uint8_t mos_state;
-        // 查询命令不能带DATA
         if (len != 0)
         {
+            ESP_LOGW(TAG, "查询命令不应带数据: %d", len);
             return;
         }
-        // 获取全部状态
-        mos_state = MOS_Get_All();
-        // 回复： CMD = 0x21,DATA[0] = MOS状态
+        uint8_t mos_state = MOS_Get_All();
         MOS_Send_Reply(CMD_MOS_REPLY, &mos_state, 1);
+        break;
     }
-    break;
 
     //  未知命令
     default:
-    {
-        return;
-    }
+        ESP_LOGW(TAG, "未知命令: 0x%02X", cmd);
+        break;
     }
 }
 
-/*
-    初始化
-*/
+// 协议初始化
 void MOS_Protocol_Init(void)
 {
-    //  UART接收一个字节后，调用MOS_Protocol_RxByte()
-    uart_drv_register_callback(MOS_Protocol_RxByte);
-    //  初始化状态机
+    // 注册UART接收回调
+    uart_drv_register_mos_byte_callback(MOS_Protocol_RxByte);
+    // 初始化状态机
     state = WAIT_HEAD;
     frame_index = 0;
     data_len = 0;
+    ESP_LOGI(TAG, "MOS Protocol initialized");
 }
 
-/*
-    协议接收状态机
-*/
+//  逐字节接收
 void MOS_Protocol_RxByte(uint8_t ch)
 {
     switch (state)
     {
-    /*
-        等待帧头
-    */
+
+    // 等待帧头
     case WAIT_HEAD:
         if (ch == MOS_FRAME_HEAD)
         {
-            // 保存HEAD
             frame[0] = ch;
-            // 下一字节写入frame[1]
             frame_index = 1;
-            // 清空长度
             data_len = 0;
-            //  等待ADDRESS
             state = WAIT_ADDR;
         }
         break;
-        // ADDRESS
+
+    //   ADDRESS
     case WAIT_ADDR:
-        // 保存ADDRESS
         frame[frame_index++] = ch;
-        // 下一步CMD
         state = WAIT_CMD;
         break;
-    // CMD
+
+    //   CMD
     case WAIT_CMD:
-        // 保存CMD
         frame[frame_index++] = ch;
-        // LEN
         state = WAIT_LEN;
         break;
-    // LEN
+
+    //   LEN
     case WAIT_LEN:
-        // 保存LEN
         frame[frame_index++] = ch;
-        // 保存DATA长度
         data_len = ch;
-        // 判断数据长度是否合法
+
         if (data_len > MOS_MAX_DATA_LEN)
         {
             // 非法长度，丢弃当前帧
+            ESP_LOGW(TAG, "非法数据长度: %d", data_len);
             state = WAIT_HEAD;
             frame_index = 0;
             data_len = 0;
             break;
         }
-        // LEN=0，没有DATA，下一字节就是CRC
+
         if (data_len == 0)
         {
             state = WAIT_CRC;
         }
         else
         {
-            // 有DATA
             state = WAIT_DATA;
         }
         break;
-    //  DATA
+
+    //   DATA
     case WAIT_DATA:
-        // 保存DATA
         frame[frame_index++] = ch;
-        /*
-            判断DATA是否收完
-            frame_index：
-            HEAD      1
-            ADDRESS   1
-            CMD       1
-            LEN       1
-            DATA      N
-            所以：frame_index = 4 + data_len
-        */
+        // frame_index = 4(HEAD+ADDR+CMD+LEN) + data_len
         if (frame_index >= (uint8_t)(4 + data_len))
         {
-            // DATA收完，下一字节就是CRC
             state = WAIT_CRC;
         }
         break;
 
-    // CRC
+    //   CRC
     case WAIT_CRC:
     {
-        uint8_t crc;
-        /*
-            CRC计算范围：
-            frame[1]
-            ADDRESS
-            frame[2]
-            CMD
-            frame[3]
-            LEN
-            frame[4...]
-            DATA
-        */
-        crc = MOS_Calc_CRC(&frame[1], frame_index - 1);
-
-        // 比较收到的CRC
+        // 计算CRC（ADDRESS + CMD + LEN + DATA）
+        uint8_t crc = MOS_Calc_CRC(&frame[1], frame_index - 1);
         if (crc == ch)
         {
             // CRC正确，执行完整帧
             MOS_Protocol_Handle(frame, frame_index);
         }
-        // 当前帧结束，无论CRC对错，都回到等待下一个AA
+        else
+        {
+            ESP_LOGW(TAG, "CRC错误: 计算0x%02X, 收到0x%02X", crc, ch);
+        }
+
+        // 无论CRC对错，回到等待帧头
         state = WAIT_HEAD;
         frame_index = 0;
         data_len = 0;
+        break;
     }
-    break;
-    // 异常状态
+
+    //   异常状态
     default:
         state = WAIT_HEAD;
         frame_index = 0;
         data_len = 0;
         break;
+    }
+}
+
+//   批量接收
+void MOS_Protocol_RxBytes(const uint8_t *data, uint16_t len)
+{
+    for (uint16_t i = 0; i < len; i++)
+    {
+        MOS_Protocol_RxByte(data[i]);
     }
 }

@@ -33,7 +33,8 @@ static void mqtt_publish_status(bool online);
 */
 static void mqtt_publish_status(bool online)
 {
-    char *msg = mqtt_message_create_status(online);
+    const char *reason = online ? NULL : REASON_MQTT_LWT;
+    char *msg = mqtt_message_create_online();
     mqtt_manager_publish(mqtt_topic_status(), msg, strlen(msg), 1, true);
     free(msg);
 }
@@ -89,7 +90,7 @@ static void mqtt_control_callback(const char *topic, const uint8_t *data, int le
     }
     else if (strcmp(cmd_str, CMD_MOS_QUERY) == 0)
     {
-        mqtt_service_publish_state();
+        mqtt_publish_mos_state();
     }
     else
     {
@@ -151,7 +152,7 @@ static void mqtt_handle_mos_all_control(cJSON *root)
         return;
     }
     MOS_All_Control(state->valueint ? MOS_ON : MOS_OFF);
-    mqtt_service_publish_state();
+    mqtt_publish_mos_state();
 }
 
 /*
@@ -164,7 +165,7 @@ static void mqtt_status_callback(mqtt_state_t state)
     case MQTT_STATE_RUNNING:
         ESP_LOGI(TAG, "MQTT 已连接");
         mqtt_publish_status(true);
-        mqtt_service_publish_state();
+        mqtt_publish_mos_state();
         mqtt_start_heartbeat();
         break;
 
@@ -230,9 +231,7 @@ static void mqtt_stop_heartbeat(void)
 /*
     发布 MOS 事件
 */
-static void mqtt_publish_mos_event(
-    uint8_t ch,
-    uint8_t state)
+static void mqtt_publish_mos_event(uint8_t ch, uint8_t state)
 {
     char *msg = mqtt_message_create_mos_event(ch, state);
     mqtt_manager_publish(mqtt_topic_event(), msg, strlen(msg), 1, false);
@@ -257,23 +256,24 @@ static void mqtt_publish_error(uint16_t code, const char *msg)
 /*
     发布 MOS 状态
 */
-void mqtt_service_publish_state(void)
+void mqtt_publish_mos_state(void)
 {
-    char msg[128];
+    // 主题
+    const char *topic = mqtt_topic_mos_state();
+    // 创建消息
     uint8_t state = MOS_Get_All();
-    // 使用循环动态生成
-    snprintf(msg, sizeof(msg),
-             "{\"mos0\":%d,\"mos1\":%d,\"mos2\":%d,\"mos3\":%d,"
-             "\"mos4\":%d,\"mos5\":%d,\"mos6\":%d,\"mos7\":%d}",
-             (state >> 0) & 1,
-             (state >> 1) & 1,
-             (state >> 2) & 1,
-             (state >> 3) & 1,
-             (state >> 4) & 1,
-             (state >> 5) & 1,
-             (state >> 6) & 1,
-             (state >> 7) & 1);
-    mqtt_manager_publish(mqtt_topic_status(), msg, strlen(msg), 1, true);
+    char *msg = mqtt_message_create_mos_state(state);
+    // 发布
+    esp_err_t ret = mqtt_manager_publish(topic, msg, strlen(msg), 1, true);
+    free(msg);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "发布 MOS 状态失败: %d", ret);
+    }
+    else
+    {
+        ESP_LOGI(TAG, "发布 MOS 状态成功");
+    }
 }
 
 /*
