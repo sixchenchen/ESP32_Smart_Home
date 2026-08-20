@@ -22,7 +22,7 @@ typedef struct
     uint8_t addr;
     uint8_t cmd;
     uint8_t seq;
-    uint8_t len;
+    uint16_t len;
     uint8_t data[SEN_MAX_DATA_LEN];
 } sen_protocol_event_t;
 

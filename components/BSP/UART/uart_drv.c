@@ -104,7 +104,7 @@ esp_err_t uart_drv_init(void)
         &uart_queue,
         0));
 
-    xTaskCreate(uart_task, "uart_task", 4096, NULL, 10, NULL);
+    xTaskCreate(uart_task, "uart_task", 8192, NULL, 10, NULL);
     ESP_LOGI(TAG, "UART driver initialized");
     return ESP_OK;
 }

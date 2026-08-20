@@ -124,8 +124,6 @@ static void sen_protocol_handle_frame(const sen_frame_t *frame)
     }
 }
 
-// ==================== 公共接口 ====================
-
 void sen_protocol_init(void)
 {
     if (s_protocol_mutex == NULL)
@@ -287,24 +285,21 @@ void sen_protocol_on_rx_byte(uint8_t ch)
     case SEN_RX_WAIT_LEN_L:
         s_rx_buffer[s_rx_count++] = ch;
         s_current_len = ((uint16_t)s_rx_buffer[4] << 8) | s_rx_buffer[5];
-        // 计算 LEN：s_rx_buffer[4]=高字节, s_rx_buffer[5]=低字节
-        uint16_t len = ((uint16_t)s_rx_buffer[4] << 8) | s_rx_buffer[5];
-        if (len > SEN_MAX_DATA_LEN)
+        if (s_current_len > SEN_MAX_DATA_LEN)
         {
             sen_protocol_reset_rx_state();
             break;
         }
-        s_rx_state = (len == 0u) ? SEN_RX_WAIT_CRC : SEN_RX_WAIT_DATA;
+        s_rx_state = (s_current_len == 0u) ? SEN_RX_WAIT_CRC : SEN_RX_WAIT_DATA;
         break;
 
     case SEN_RX_WAIT_DATA:
         s_rx_buffer[s_rx_count++] = ch;
         if (s_rx_count >= (6u + s_current_len))
-        { // ← 使用全局变量
+        {
             s_rx_state = SEN_RX_WAIT_CRC;
         }
         break;
-
     case SEN_RX_WAIT_CRC:
     {
         sen_frame_t frame;

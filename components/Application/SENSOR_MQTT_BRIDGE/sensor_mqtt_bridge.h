@@ -1,20 +1,32 @@
-#ifndef __SENSOR_MQTT_BRIDGE_H__
-#define __SENSOR_MQTT_BRIDGE_H__
+#ifndef SENSOR_MQTT_BRIDGE_H
+#define SENSOR_MQTT_BRIDGE_H
 
 #include "esp_err.h"
-#include "sen_protocol.h"
-#include <stdbool.h>
-#include <stdint.h>
-#include "sensor_manager.h"
+#include "sensor_manager.h" // ✅ 必须包含，定义 sensor_data_t
 
-#define SENSOR_CACHE_SIZE 64u
-#define SENSOR_ITEM_SIZE 7u // sensor_id(1) + timestamp(4) + count(2)
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
-typedef void (*sensor_data_callback_t)(const sensor_data_t *data, void *user_ctx);
+// 批量缓存配置
+#define BATCH_MAX_COUNT 32
+#define BATCH_TIMEOUT_MS 100
+#define ITEM_SIZE 7
 
-esp_err_t sensor_mqtt_bridge_init(void);
-void sensor_manager_poll(uint32_t now_ms);
-uint32_t sensor_manager_get_cache_count(void);
-void sensor_manager_set_data_callback(sensor_data_callback_t callback, void *user_ctx);
+    // ✅ batch_cache_t 结构体必须在头文件中定义
+    typedef struct
+    {
+        sensor_data_t data[BATCH_MAX_COUNT];
+        uint8_t count;
+        uint32_t first_time_ms;
+    } batch_cache_t;
+
+    esp_err_t sensor_mqtt_bridge_init(void);
+    void sensor_mqtt_bridge_poll(uint32_t now_ms);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

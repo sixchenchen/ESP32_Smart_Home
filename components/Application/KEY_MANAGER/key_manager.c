@@ -4,6 +4,7 @@
 #include "mqtt_message.h"
 #include "mqtt_topic.h"
 #include "key.h"
+#include "led.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -11,6 +12,7 @@
 #include "esp_log.h"
 
 static const char *TAG = "KEY_MANAGER";
+static bool s_led_lock = false;
 
 // 发布恢复出厂事件
 static void publish_factory_reset_event(void)
@@ -55,6 +57,11 @@ static void key_manager_task(void *arg)
     QueueHandle_t queue = key_get_queue();
     while (1)
     {
+        if (s_led_lock)
+        {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
         if (xQueueReceive(queue, &event, portMAX_DELAY))
         {
             switch (event)
@@ -67,6 +74,8 @@ static void key_manager_task(void *arg)
             // 长按：恢复出厂设置
             case KEY_EVENT_LONG_PRESS:
                 ESP_LOGW(TAG, "long press: factory reset");
+                led_status_lock(true);
+                led_set_mode_with_callback(LED_MODE_BLINK_3, LED_MODE_FAST_FLASH);
                 // 先发布恢复出厂事件（在线状态）
                 publish_factory_reset_event();
                 // 等待消息发送完成（100ms）
@@ -92,4 +101,9 @@ void key_manager_start(void)
         NULL,
         5,
         NULL);
+}
+
+void led_status_lock(bool lock)
+{
+    s_led_lock = lock;
 }

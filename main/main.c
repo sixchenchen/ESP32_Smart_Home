@@ -15,6 +15,7 @@
 #include "sensor_manager.h"
 #include "sensor_mqtt_bridge.h"
 #include "esp_timer.h"
+#include "led_status.h"
 
 void app_main(void)
 {
@@ -23,6 +24,7 @@ void app_main(void)
     device_context_init();
     nvs_flash_init();
     wifi_manager_init();
+    led_status_start();
     wifi_manager_start();
     MOS_Init();
     uart_drv_init();
@@ -30,12 +32,9 @@ void app_main(void)
     sen_protocol_init();
     sensor_manager_init();
     sensor_mqtt_bridge_init();
-
+    sensor_manager_task_start();
     while (1)
     {
-        uint32_t now_ms = esp_timer_get_time() / 1000;
-
-        sensor_manager_poll(now_ms);
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

@@ -18,11 +18,11 @@ typedef struct
 } sensor_data_t;
 
 typedef void (*sensor_data_callback_t)(const sensor_data_t *data, void *user_ctx);
-typedef void (*sensor_batch_callback_t)(const uint8_t *data, uint8_t count, void *user_ctx);
 
 esp_err_t sensor_manager_init(void);
 void sensor_manager_poll(uint32_t now_ms);
 uint32_t sensor_manager_get_cache_count(void);
+esp_err_t sensor_manager_task_start(void);
 void sensor_manager_set_data_callback(sensor_data_callback_t callback, void *user_ctx);
 
 #endif

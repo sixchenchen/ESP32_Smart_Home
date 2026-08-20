@@ -14,7 +14,6 @@ typedef enum
     WIFI_MANAGER_CONNECTED,
     WIFI_MANAGER_RECONNECTING,
     WIFI_MANAGER_ERROR,
-
 } wifi_manager_state_t;
 
 /*
