@@ -79,38 +79,29 @@ static void add_to_batch(const sensor_data_t *data)
         add_to_batch(data);
         return;
     }
-
     if (s_batch_cache.count == 0)
     {
         s_batch_cache.first_time_ms = esp_timer_get_time() / 1000;
     }
-
     memcpy(&s_batch_cache.data[s_batch_cache.count], data, sizeof(sensor_data_t));
     s_batch_cache.count++;
-
-    ESP_LOGD(TAG, "Added to batch: count=%d, id=%d",
-             s_batch_cache.count, data->sensor_id);
+    ESP_LOGD(TAG, "Added to batch: count=%d, id=%d", s_batch_cache.count, data->sensor_id);
 }
 
-// ✅ 这个回调函数被 sensor_manager 通过函数指针调用
+// 这个回调函数被 sensor_manager 通过函数指针调用
 static void sensor_data_callback(const sensor_data_t *data, void *ctx)
 {
     if (data == NULL)
     {
         return;
     }
-
-    ESP_LOGI(TAG, "Received: id=%d, ts=%lu, count=%d",
-             data->sensor_id, data->timestamp_ms, data->count);
-
+    ESP_LOGI(TAG, "Received: id=%d, ts=%lu, count=%d", data->sensor_id, data->timestamp_ms, data->count);
     if (!mqtt_manager_is_running())
     {
         ESP_LOGW(TAG, "MQTT not running, data cached in sensor_manager");
         return;
     }
-
     add_to_batch(data);
-
     if (s_batch_cache.count >= BATCH_MAX_COUNT)
     {
         flush_batch();

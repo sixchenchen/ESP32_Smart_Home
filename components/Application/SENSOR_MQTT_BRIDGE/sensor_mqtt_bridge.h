@@ -14,7 +14,7 @@ extern "C"
 #define BATCH_TIMEOUT_MS 100
 #define ITEM_SIZE 7
 
-    // ✅ batch_cache_t 结构体必须在头文件中定义
+    // batch_cache_t 结构体必须在头文件中定义
     typedef struct
     {
         sensor_data_t data[BATCH_MAX_COUNT];

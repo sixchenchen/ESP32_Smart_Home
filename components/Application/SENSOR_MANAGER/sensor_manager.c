@@ -83,10 +83,7 @@ static void sensor_manager_cache_data(const sen_protocol_event_t *event)
         data->count = ((uint16_t)event->data[offset + 5] << 0) |
                       ((uint16_t)event->data[offset + 6] << 8);
         data->receive_time_ms = esp_timer_get_time() / 1000;
-
-        ESP_LOGI(TAG, "Cached[%d]: id=%d, ts=%u, count=%d",
-                 i, data->sensor_id, data->timestamp_ms, data->count);
-
+        ESP_LOGI(TAG, "Cached[%d]: id=%d, ts=%u, count=%d", i, data->sensor_id, data->timestamp_ms, data->count);
         s_cache_head = next_head;
     }
 
@@ -171,7 +168,6 @@ static void sensor_task(void *arg)
 }
 
 // ==================== 公共接口 ====================
-
 esp_err_t sensor_manager_init(void)
 {
     if (s_mutex == NULL)
