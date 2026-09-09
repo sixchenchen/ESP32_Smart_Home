@@ -7,6 +7,20 @@
 
 static const char *TAG = "LED_STATUS";
 
+// LED 状态机被外部（如长按恢复出厂的 LED 闪灯）暂时接管时置 true
+// 此时 led_status_task 暂停根据 WiFi 状态切换 LED 模式，避免覆盖外部反馈
+static bool s_led_lock = false;
+
+void led_status_lock(bool lock)
+{
+    s_led_lock = lock;
+}
+
+bool led_status_lock_get(void)
+{
+    return s_led_lock;
+}
+
 /**
  * @brief LED 状态监控任务
  */
@@ -17,6 +31,13 @@ static void led_status_task(void *arg)
 
     while (1)
     {
+        // 长按恢复出厂的 LED 闪灯期间，禁止本任务覆盖 LED 效果
+        if (s_led_lock)
+        {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+
         wifi_manager_state_t state = wifi_manager_get_state();
         led_mode_t new_mode;
         switch (state)

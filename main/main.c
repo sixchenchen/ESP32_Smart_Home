@@ -21,12 +21,12 @@ void app_main(void)
 {
     led_init();
     key_manager_start();
+    MOS_Init();
     device_context_init();
     nvs_flash_init();
     wifi_manager_init();
-    led_status_start();
     wifi_manager_start();
-    MOS_Init();
+    led_status_start();
     uart_drv_init();
     MOS_Protocol_Init();
     sen_protocol_init();

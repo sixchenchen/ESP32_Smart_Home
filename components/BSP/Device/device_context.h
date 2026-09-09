@@ -9,6 +9,7 @@
 #define DEVICE_NAME "ESP32-MOS"
 #define HARDWARE_VERSION "V1.0"
 #define FIRMWARE_VERSION "1.0.0"
+#define PRODUCT_ID "SENSOR_INFO"
 
 typedef struct
 {

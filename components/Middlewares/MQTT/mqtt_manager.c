@@ -6,6 +6,7 @@
 #include "device_context.h"
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "MQTT";
 
@@ -63,6 +64,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, " MQTT 连接成功");
+        wifi_manager_set_mqtt_ready(true);
         mqtt_set_state(MQTT_STATE_RUNNING);
         mqtt_manager_subscribe(mqtt_topic_control(), 1);
         break;
@@ -130,8 +132,8 @@ esp_err_t mqtt_manager_init(void)
                     .keepalive = 15,
                 },
             .network = {
-                .timeout_ms = 5000,             
-                .disable_auto_reconnect = false, 
+                .timeout_ms = 5000,
+                .disable_auto_reconnect = false,
             }
 
         };
@@ -142,7 +144,7 @@ esp_err_t mqtt_manager_init(void)
         will_message = NULL;
         return ESP_FAIL;
     }
-
+    // 注册事件处理
     esp_mqtt_client_register_event(
         mqtt_client,
         ESP_EVENT_ANY_ID,

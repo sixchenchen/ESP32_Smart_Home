@@ -49,37 +49,115 @@ static esp_err_t js_handler(httpd_req_t *req)
 */
 static esp_err_t wifi_config_handler(httpd_req_t *req)
 {
-    char buffer[256] = {0};
-    int recv_len = httpd_req_recv(req, buffer, sizeof(buffer) - 1);
-    if (recv_len <= 0)
+    // 获取 Content-Length
+    size_t total_len = 0;
+    char content_len_str[32] = {0};
+    if (httpd_req_get_hdr_value_str(req, "Content-Length", content_len_str, sizeof(content_len_str)) == ESP_OK)
     {
+        total_len = atoi(content_len_str);
+    }
+
+    //  限制最大长度（防止内存耗尽）
+    const size_t MAX_BODY_SIZE = 512;
+    if (total_len > MAX_BODY_SIZE)
+    {
+        ESP_LOGW(TAG, "Request body too large: %zu > %zu", total_len, MAX_BODY_SIZE);
+        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE, "Body too large");
         return ESP_FAIL;
     }
-    buffer[recv_len] = 0;
-    ESP_LOGI(TAG, "recv:%s", buffer);
+
+    // 分配缓冲区（动态或固定）
+    char *buffer = malloc(total_len + 1);
+    if (buffer == NULL)
+    {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+    memset(buffer, 0, total_len + 1);
+
+    // 循环读取完整 body
+    size_t received = 0;
+    int ret = 0;
+    while (received < total_len)
+    {
+        ret = httpd_req_recv(req, buffer + received, total_len - received);
+        if (ret <= 0)
+        {
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT)
+            {
+                continue; // 超时重试
+            }
+            ESP_LOGW(TAG, "Failed to receive body: %d", ret);
+            free(buffer);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Receive failed");
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    buffer[received] = '\0';
+
+    ESP_LOGI(TAG, "Received %zu bytes: %s", received, buffer);
+
+    // 解析 JSON
     cJSON *root = cJSON_Parse(buffer);
+    free(buffer); // 解析完成后释放
+
     if (root == NULL)
     {
         httpd_resp_sendstr(req, "json error");
         return ESP_FAIL;
     }
+
     cJSON *ssid_json = cJSON_GetObjectItem(root, "ssid");
     cJSON *pass_json = cJSON_GetObjectItem(root, "password");
+
     if (!ssid_json || !pass_json)
     {
         cJSON_Delete(root);
         httpd_resp_sendstr(req, "parameter error");
         return ESP_FAIL;
     }
+
+    // 检查是否为字符串
+    if (!cJSON_IsString(ssid_json) || !cJSON_IsString(pass_json))
+    {
+        cJSON_Delete(root);
+        httpd_resp_sendstr(req, "SSID and password must be strings");
+        return ESP_FAIL;
+    }
+
     char ssid[32];
     char password[64];
-    strcpy(ssid, ssid_json->valuestring);
-    strcpy(password, pass_json->valuestring);
+
+    // 检查长度
+    size_t ssid_len = strlen(ssid_json->valuestring);
+    size_t pass_len = strlen(pass_json->valuestring);
+
+    if (ssid_len >= sizeof(ssid))
+    {
+        cJSON_Delete(root);
+        httpd_resp_sendstr(req, "SSID too long (max 31 chars)");
+        ESP_LOGW(TAG, "SSID too long: %zu", ssid_len);
+        return ESP_FAIL;
+    }
+
+    if (pass_len >= sizeof(password))
+    {
+        cJSON_Delete(root);
+        httpd_resp_sendstr(req, "Password too long (max 63 chars)");
+        ESP_LOGW(TAG, "Password too long: %zu", pass_len);
+        return ESP_FAIL;
+    }
+
+    strlcpy(ssid, ssid_json->valuestring, sizeof(ssid));
+    strlcpy(password, pass_json->valuestring, sizeof(password));
+
     ESP_LOGI(TAG, "SSID:%s PASSWORD:%s", ssid, password);
 
     wifi_manager_set_wifi(ssid, password);
     cJSON_Delete(root);
-    /* 返回 JSON */
+
+    // 返回 JSON
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddStringToObject(resp, "status", "connecting");
     cJSON_AddStringToObject(resp, "msg", "WiFi连接中，请稍候...");
@@ -132,7 +210,7 @@ static esp_err_t wifi_status_handler(httpd_req_t *req)
 static esp_err_t wifi_scan_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "start wifi scan");
-    wifi_scan_result_t result[20];
+    static wifi_scan_result_t result[20];
     uint16_t count = 0;
     esp_err_t ret = wifi_scan_start(result, 20, &count);
     if (ret != ESP_OK)
@@ -168,32 +246,106 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// 工厂重置任务
 static void factory_reset_task(void *arg)
 {
-    /*
-        等待HTTP响应完成
-    */
+    // 等待 HTTP 响应完成
     vTaskDelay(pdMS_TO_TICKS(500));
+
+    ESP_LOGW(TAG, "Starting factory reset process...");
+
+    //  停止 HTTP 服务器（避免与 WiFi 重启竞态）
+    extern httpd_handle_t server;
+    if (server != NULL)
+    {
+        ESP_LOGI(TAG, "Stopping HTTP server...");
+        httpd_stop(server);
+        server = NULL;
+        ESP_LOGI(TAG, "HTTP server stopped");
+    }
+
+    // 执行工厂重置
     wifi_manager_factory_reset();
+
+    // 重新启动 HTTP 服务器（配网模式）
+    ESP_LOGI(TAG, "Restarting HTTP server in AP config mode...");
+    http_server_start();
+
+    ESP_LOGI(TAG, "Factory reset completed, HTTP server restarted");
     vTaskDelete(NULL);
 }
-
+// ============ 工厂重置 Handler ============
 static esp_err_t factory_reset_handler(httpd_req_t *req)
 {
-    ESP_LOGW(TAG, "factory reset request");
-    /*
-        先回复网页
-    */
+    //  检查请求方法
+    if (req->method != HTTP_POST)
+    {
+        httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+        return ESP_FAIL;
+    }
+
+    // 读取完整的请求体（防止截断）
+    char buffer[FACTORY_RESET_BODY_MAX] = {0};
+    size_t received = 0;
+    int ret = 0;
+    while (received < FACTORY_RESET_BODY_MAX - 1)
+    {
+        ret = httpd_req_recv(req, buffer + received, FACTORY_RESET_BODY_MAX - 1 - received);
+        if (ret < 0)
+        {
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT)
+            {
+                continue; // 超时重试
+            }
+            ESP_LOGW(TAG, "Receive error: %d", ret);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Receive failed");
+            return ESP_FAIL;
+        }
+        if (ret == 0)
+        {
+            break; // 没有更多数据
+        }
+        received += ret;
+    }
+    buffer[received] = '\0';
+
+    // 检查是否完整接收
+    if (received >= FACTORY_RESET_BODY_MAX - 1)
+    {
+        ESP_LOGW(TAG, "Body too large, truncated");
+        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE, "Body too large");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGD(TAG, "Received %zu bytes: %s", received, buffer);
+
+    // 解析 JSON
+    cJSON *root = cJSON_Parse(buffer);
+    if (root == NULL)
+    {
+        httpd_resp_sendstr(req, "JSON parse error");
+        return ESP_FAIL;
+    }
+
+    // 检查确认字段
+    cJSON *confirm = cJSON_GetObjectItem(root, "confirm");
+    if (!confirm || !cJSON_IsString(confirm) ||
+        strcmp(confirm->valuestring, "YES") != 0)
+    {
+        cJSON_Delete(root);
+        httpd_resp_sendstr(req, "Missing or invalid 'confirm' field (must be 'YES')");
+        return ESP_FAIL;
+    }
+
+    cJSON_Delete(root);
+
+    ESP_LOGW(TAG, "factory reset confirmed, executing...");
+
+    // 发送响应
     httpd_resp_sendstr(req, "factory reset ok");
-    /*
-        后台执行
-    */
-    xTaskCreate(factory_reset_task,
-                "factory_reset",
-                4096,
-                NULL,
-                5,
-                NULL);
+
+    // 创建重置任务（延迟执行）
+    xTaskCreate(factory_reset_task, "factory_reset", 4096, NULL, 5, NULL);
     return ESP_OK;
 }
 
@@ -256,7 +408,7 @@ void http_server_start(void)
     httpd_uri_t factory_reset_uri =
         {
             .uri = "/factory_reset",
-            .method = HTTP_GET,
+            .method = HTTP_POST,
             .handler = factory_reset_handler,
             .user_ctx = NULL
 

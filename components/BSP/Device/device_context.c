@@ -35,7 +35,7 @@ esp_err_t device_context_init(void)
              ctx.base_mac[4],
              ctx.base_mac[5]);
     strcpy(ctx.device_name, DEVICE_NAME);
-    strcpy(ctx.product_id, "MOS_CONTROLLER");
+    strcpy(ctx.product_id, PRODUCT_ID);
     strcpy(ctx.hardware_version, HARDWARE_VERSION);
     strcpy(ctx.firmware_version, FIRMWARE_VERSION);
     esp_read_mac(ctx.sta_mac, ESP_MAC_WIFI_STA);

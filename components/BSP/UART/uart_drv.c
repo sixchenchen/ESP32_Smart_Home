@@ -32,26 +32,13 @@ static void uart_task(void *arg)
                 {
                     length = UART_BUF_SIZE;
                 }
+                // timeout=0 非阻塞读，立即返回当前已有字节，避免等待
                 int len = uart_read_bytes(UART_PORT_NUM, rx_buffer, length, 0);
                 if (len > 0)
                 {
-                    // // 单字节控制mos回调
-                    // if (rx_mos_byte_callback != NULL)
-                    // {
-                    //     for (int i = 0; i < len; i++)
-                    //     {
-                    //         rx_mos_byte_callback(rx_buffer[i]);
-                    //     }
-                    // }
-                    // // 多字节控制mos回调
-                    // if (rx_callback != NULL)
-                    // {
-                    //     rx_callback(rx_buffer, len);
-                    // }
                     // 光栅传感器回调
                     if (rx_sen_byte_callback != NULL)
                     {
-                        ESP_LOGW(TAG, "rx_sen_byte_callback->:%d\n",length);
                         for (int i = 0; i < len; i++)
                         {
                             rx_sen_byte_callback(rx_buffer[i]);
@@ -104,7 +91,9 @@ esp_err_t uart_drv_init(void)
         &uart_queue,
         0));
 
-    xTaskCreate(uart_task, "uart_task", 8192, NULL, 10, NULL);
+    // priority 从 10 降到 7：与 sensor_task(7) / esp-mqtt / WiFi 在同一区间，
+    // 避免 UART 采集任务抢占网络栈调度
+    xTaskCreate(uart_task, "uart_task", 8192, NULL, 7, NULL);
     ESP_LOGI(TAG, "UART driver initialized");
     return ESP_OK;
 }
@@ -115,8 +104,18 @@ esp_err_t uart_drv_send(const uint8_t *data, uint16_t len)
     {
         return ESP_ERR_INVALID_ARG;
     }
-    int ret = uart_write_bytes(UART_PORT_NUM, (const char *)data, len);
-    return (ret >= 0) ? ESP_OK : ESP_FAIL;
+    // timeout_ms=0 非阻塞：TX FIFO 满时立即返回已写入字节数，不等待空间,timeout_ms=-1 会一直等到全部写入（原阻塞行为，协议层发 ACK 会把 sensor_task 卡住）
+    int written = uart_write_bytes_with_break(UART_PORT_NUM, (const char *)data, len, 0);
+    if (written < 0)
+    {
+        return ESP_FAIL;
+    }
+    if (written < len)
+    {
+        ESP_LOGW(TAG, "uart_tx partial write: %d/%d", written, len);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    return ESP_OK;
 }
 
 void uart_drv_register_callback(uart_rx_callback_t callback)

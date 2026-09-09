@@ -52,7 +52,7 @@ static void flush_batch(void)
             mqtt_topic_sensor(),
             json,
             strlen(json),
-            1,
+            0, // QoS 0: 传感器采样周期性可覆盖，不做 PUBACK 等待，避免 publish 阻塞 sensor_task
             false);
 
         if (ret == ESP_OK)

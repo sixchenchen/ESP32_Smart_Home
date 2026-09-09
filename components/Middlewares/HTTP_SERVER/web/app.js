@@ -6,6 +6,7 @@ var CONFIG = {
     REDIRECT_PATH: '/',
     REDIRECT_DELAY: 5000,
 };
+
 // ========================================
 // 页面加载完成后自动扫描 WiFi
 // ========================================
@@ -21,12 +22,16 @@ document.addEventListener('DOMContentLoaded', function () {
 function setStatus(text, type) {
     const statusBar = document.getElementById('statusBar');
     const statusText = document.getElementById('statusText');
-    statusText.textContent = text;
-    statusBar.className = 'status-bar';
-    if (type) {
-        statusBar.classList.add('status-' + type);
-    } else {
-        statusBar.classList.add('status-idle');
+    if (statusText) {
+        statusText.textContent = text;
+    }
+    if (statusBar) {
+        statusBar.className = 'status-bar';
+        if (type) {
+            statusBar.classList.add('status-' + type);
+        } else {
+            statusBar.classList.add('status-idle');
+        }
     }
 }
 
@@ -35,6 +40,7 @@ function setStatus(text, type) {
 // ========================================
 function showMessage(text, type) {
     const msg = document.getElementById('msg');
+    if (!msg) return;
     msg.textContent = text;
     msg.className = 'message show ' + type;
     clearTimeout(msg._timer);
@@ -52,11 +58,18 @@ function scan_wifi() {
     const list = document.getElementById('wifi_list');
     const hint = document.getElementById('scanningHint');
 
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px;"></span> 扫描中...';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px;"></span> 扫描中...';
+    }
     setStatus('正在扫描附近 WiFi...', 'scanning');
-    hint.classList.remove('hidden');
-    list.innerHTML = '';
+    
+    if (hint) {
+        hint.classList.remove('hidden');
+    }
+    if (list) {
+        list.innerHTML = '';
+    }
 
     fetch('/scan')
         .then(res => {
@@ -64,41 +77,54 @@ function scan_wifi() {
             return res.json();
         })
         .then(data => {
-            hint.classList.add('hidden');
+            if (hint) {
+                hint.classList.add('hidden');
+            }
             if (!data || data.length === 0) {
-                list.innerHTML = '<option value="">未发现 WiFi 网络</option>';
+                if (list) {
+                    list.innerHTML = '<option value="">未发现 WiFi 网络</option>';
+                }
                 setStatus('未发现 WiFi，请检查设备', 'error');
                 return;
             }
             data.sort((a, b) => b.rssi - a.rssi);
-            list.innerHTML = '';
-            data.forEach((wifi) => {
-                const option = document.createElement('option');
-                option.value = wifi.ssid;
-                let signalIcon = '📶';
-                if (wifi.rssi > -50) signalIcon = '📶📶📶';
-                else if (wifi.rssi > -65) signalIcon = '📶📶';
-                else if (wifi.rssi > -80) signalIcon = '📶';
-                // option.text = signalIcon + ' ' + wifi.ssid + ' (' + wifi.rssi + 'dBm)';
-                option.text = signalIcon + ' ' + wifi.ssid;
-                list.appendChild(option);
-            });
+            if (list) {
+                list.innerHTML = '';
+                data.forEach((wifi) => {
+                    const option = document.createElement('option');
+                    option.value = wifi.ssid;
+                    let signalIcon = '📶';
+                    if (wifi.rssi > -50) signalIcon = '📶📶📶';
+                    else if (wifi.rssi > -65) signalIcon = '📶📶';
+                    else if (wifi.rssi > -80) signalIcon = '📶';
+                    option.text = signalIcon + ' ' + wifi.ssid;
+                    list.appendChild(option);
+                });
+            }
             setStatus('发现 ' + data.length + ' 个 WiFi 网络，请选择', 'success');
             if (data.length === 1) {
-                list.options[0].selected = true;
+                if (list) {
+                    list.options[0].selected = true;
+                }
                 document.getElementById('ssid').value = data[0].ssid;
             }
         })
         .catch(err => {
             console.error(err);
-            hint.classList.add('hidden');
-            list.innerHTML = '<option value="">扫描失败，请重试</option>';
+            if (hint) {
+                hint.classList.add('hidden');
+            }
+            if (list) {
+                list.innerHTML = '<option value="">扫描失败，请重试</option>';
+            }
             setStatus('扫描失败: ' + err.message, 'error');
             showMessage('WiFi 扫描失败，请重试', 'error');
         })
         .finally(() => {
-            btn.disabled = false;
-            btn.innerHTML = '<span class="btn-icon">🔄</span> 扫描 WiFi';
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<span class="btn-icon">🔄</span> 扫描 WiFi';
+            }
         });
 }
 
@@ -107,11 +133,33 @@ function scan_wifi() {
 // ========================================
 function select_wifi() {
     const list = document.getElementById('wifi_list');
-    const selected = list.options[list.selectedIndex];
+    const selected = list ? list.options[list.selectedIndex] : null;
     if (selected && selected.value) {
         document.getElementById('ssid').value = selected.value;
         document.getElementById('password').focus();
         setStatus('已选择: ' + selected.value, 'success');
+    }
+}
+
+// ========================================
+// 密码显示切换 ✅ 新增实现
+// ========================================
+function togglePassword() {
+    const input = document.getElementById('password');
+    const btn = document.querySelector('.password-toggle');
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (btn) {
+            btn.textContent = '🙈';
+            btn.title = '隐藏密码';
+        }
+    } else {
+        input.type = 'password';
+        if (btn) {
+            btn.textContent = '👁️';
+            btn.title = '显示密码';
+        }
     }
 }
 
@@ -136,7 +184,6 @@ function connect_wifi() {
         return;
     }
 
-    // 清除之前的轮询
     if (statusPollTimer) {
         clearInterval(statusPollTimer);
         statusPollTimer = null;
@@ -159,7 +206,6 @@ function connect_wifi() {
             if (data.status === 'connecting') {
                 showMessage('⏳ ' + data.msg, 'success');
                 setStatus('设备正在连接 WiFi，请稍候...', 'connecting');
-                // 开始轮询真实状态
                 startStatusPolling();
             } else {
                 throw new Error(data.msg || '未知错误');
@@ -179,7 +225,7 @@ function connect_wifi() {
 // ========================================
 function startStatusPolling() {
     let pollCount = 0;
-    const maxPoll = 25; // 最多轮询 25 次 × 2 秒 = 50 秒
+    const maxPoll = 25;
     const btn = document.getElementById('connectBtn');
 
     statusPollTimer = setInterval(() => {
@@ -203,86 +249,74 @@ function startStatusPolling() {
                 if (data.status === 'connected') {
                     clearInterval(statusPollTimer);
                     statusPollTimer = null;
-
-                    // ===== 连接成功 =====
                     showMessage('✅ WiFi 连接成功！IP: ' + (data.ip || '未知'), 'success');
                     setStatus('🎉 连接成功！', 'success');
-                    // 注释掉下面这一段（倒计时跳转）
-                    //    let countdown = 5;
-                    //    const statusText = document.getElementById('statusText');
-                    //    const timer = setInterval(() => {
-                    //        countdown--;
-                    //        if (countdown > 0) {
-                    //            statusText.textContent = '🎉 连接成功！' + countdown + '秒后跳转...';
-                    //        } else {
-                    //            clearInterval(timer);
-                    //            window.location.href = CONFIG.BACKEND_URL;
-                    //        }
-                    //    }, 1000);
                     btn.disabled = false;
                     btn.innerHTML = '<span class="btn-icon">🚀</span> 连接 WiFi';
                 } else if (data.status === 'failed') {
                     clearInterval(statusPollTimer);
                     statusPollTimer = null;
-
-                    // ===== 连接失败（密码错误等）=====
                     showMessage('❌ 连接失败: ' + (data.reason || '请检查密码'), 'error');
                     setStatus('连接失败，请重试', 'error');
                     btn.disabled = false;
                     btn.innerHTML = '<span class="btn-icon">🚀</span> 连接 WiFi';
-
                 } else if (data.status === 'connecting') {
-                    // 仍在连接中，继续轮询，UI 保持现状
-                    setStatus('设备正在连接 WiFi... (' + pollCount + ')', 'connecting');
+                    setStatus('设备正在连接 WiFi... (' + pollCount + '/' + maxPoll + ')', 'connecting');
                 }
             })
             .catch(err => {
-                // 请求失败可能是 AP 已关闭（设备切换网络成功）
                 console.warn('状态查询失败:', err);
-                // 继续轮询几次，如果持续失败则可能是网络已切换
             });
     }, 2000);
-}
-
-// ========================================
-// 密码显示切换
-// ========================================
-function togglePassword() {
-    const input = document.getElementById('password');
-    const btn = document.querySelector('.password-toggle');
-    if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = '🙈';
-    } else {
-        input.type = 'password';
-        btn.textContent = '👁️';
-    }
 }
 
 // ========================================
 // 恢复出厂设置
 // ========================================
 function factoryReset() {
-    if (!confirm('⚠️ 确定要恢复出厂设置吗？\n这将清除所有 WiFi 配置。')) {
+    if (!confirm('⚠️ 确定要恢复出厂设置吗？\n\n此操作将：\n• 清除所有 WiFi 配置\n• 重置设备到出厂状态\n• 设备将重新启动配网模式\n\n确认继续吗？')) {
         return;
     }
+
+    const confirmText = prompt('请输入 "YES" 确认恢复出厂设置：');
+    if (confirmText !== 'YES') {
+        showMessage('已取消恢复出厂设置', 'warning');
+        return;
+    }
+
     setStatus('正在恢复出厂设置...', 'connecting');
-    fetch('/factory_reset', { method: 'GET' })
+
+    fetch('/factory_reset', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            confirm: 'YES'
+        })
+    })
         .then(response => {
-            if (!response.ok) throw new Error('恢复失败: ' + response.status);
+            if (!response.ok) {
+                if (response.status === 405) {
+                    throw new Error('方法不允许，请使用 POST 请求');
+                }
+                throw new Error('恢复失败: ' + response.status);
+            }
             return response.text();
         })
         .then(data => {
             showMessage('✅ 恢复完成，请重新配置 WiFi', 'success');
-            setStatus('已恢复出厂设置', 'success');
+            setStatus('已恢复出厂设置，正在重新扫描...', 'success');
             document.getElementById('ssid').value = '';
             document.getElementById('password').value = '';
             document.getElementById('wifi_list').innerHTML = '<option value="">请重新扫描 WiFi</option>';
-            setTimeout(function () { scan_wifi(); }, 3000);
+            setTimeout(function () {
+                scan_wifi();
+            }, 3000);
         })
         .catch(err => {
-            console.error(err);
-            showMessage('恢复失败: ' + err.message, 'error');
+            console.error('恢复出厂设置错误:', err);
+            showMessage('❌ 恢复失败: ' + err.message, 'error');
             setStatus('恢复失败', 'error');
         });
 }
@@ -293,7 +327,7 @@ function factoryReset() {
 document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
         const active = document.activeElement;
-        if (active.id === 'ssid' || active.id === 'password') {
+        if (active && (active.id === 'ssid' || active.id === 'password')) {
             connect_wifi();
         }
     }

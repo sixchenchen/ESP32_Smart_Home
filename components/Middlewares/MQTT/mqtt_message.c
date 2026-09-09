@@ -59,7 +59,7 @@ char *mqtt_message_create_state(const char *state, const char *reason)
 {
     cJSON *root = create_base_message(TYPE_STATE);
     cJSON *data = json_create_object();
-    json_add_string(data, "state", state);
+    json_add_string(data, JSON_STATE, state);
     if (reason != NULL)
     {
         json_add_string(data, JSON_REASON, reason);

@@ -12,6 +12,8 @@ static char mos_state[80];
 static char heart[80];
 static char will[80];
 static char sensor[80];
+static char ota[80];
+static char config[80];
 
 void mqtt_topic_init(void)
 {
@@ -21,8 +23,10 @@ void mqtt_topic_init(void)
     snprintf(event, sizeof(event), "device/%s/event", dev->device_id);
     snprintf(mos_state, sizeof(mos_state), "device/%s/mos_state", dev->device_id);
     snprintf(heart, sizeof(heart), "device/%s/heart", dev->device_id);
-    snprintf(will, sizeof(will), "device/%s/status", dev->device_id);
+    snprintf(will, sizeof(will), "device/%s/will", dev->device_id);
     snprintf(sensor, sizeof(sensor), "device/%s/sensor", dev->device_id);
+    snprintf(ota, sizeof(ota), "device/%s/ota", dev->device_id);
+    snprintf(config, sizeof(config), "device/%s/config", dev->device_id);
 }
 
 const char *mqtt_topic_control(void)
@@ -63,4 +67,14 @@ const char *mqtt_topic_will(void)
 const char *mqtt_topic_sensor(void)
 {
     return sensor;
+}
+
+const char *mqtt_topic_ota(void)
+{
+    return ota;
+}
+
+const char *mqtt_topic_config(void)
+{
+    return config;
 }

@@ -80,8 +80,7 @@ static void sensor_manager_cache_data(const sen_protocol_event_t *event)
                              ((uint32_t)event->data[offset + 2] << 8) |
                              ((uint32_t)event->data[offset + 3] << 16) |
                              ((uint32_t)event->data[offset + 4] << 24);
-        data->count = ((uint16_t)event->data[offset + 5] << 0) |
-                      ((uint16_t)event->data[offset + 6] << 8);
+        data->count = ((uint16_t)event->data[offset + 5] << 0) | ((uint16_t)event->data[offset + 6] << 8);
         data->receive_time_ms = esp_timer_get_time() / 1000;
         ESP_LOGI(TAG, "Cached[%d]: id=%d, ts=%u, count=%d", i, data->sensor_id, data->timestamp_ms, data->count);
         s_cache_head = next_head;
@@ -210,7 +209,8 @@ esp_err_t sensor_manager_task_start(void)
         "sensor_task",
         TASK_STACK_SIZE,
         NULL,
-        8,
+        7, // priority 从 8 降到 7：与 uart_task(7) / esp-mqtt / WiFi 同区间，
+           // 避免采集优先级过高挤压协议栈调度；publish 已解耦到独立低优先级队列
         &s_task_handle);
 
     if (ret != pdPASS)

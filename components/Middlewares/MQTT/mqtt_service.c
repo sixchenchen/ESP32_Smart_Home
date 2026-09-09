@@ -25,8 +25,11 @@ static void heartbeat_task(void *arg);
 static void mqtt_publish_mos_event(uint8_t channel, uint8_t state);
 static void mqtt_handle_mos_control(cJSON *root);
 static void mqtt_handle_mos_all_control(cJSON *root);
-static void mqtt_publish_error(uint16_t code, const char *msg);
 static void mqtt_publish_status(bool online);
+static void mqtt_handle_control_message(const uint8_t *data, int len);
+static void mqtt_handle_ota_message(const uint8_t *data, int len);
+static void mqtt_handle_config_message(const uint8_t *data, int len);
+static void mqtt_publish_error(int error_code, const char *error_msg);
 
 /*
     发布状态
@@ -39,22 +42,15 @@ static void mqtt_publish_status(bool online)
     free(msg);
 }
 
-/*
-    MQTT收到数据回调
-*/
-static void mqtt_control_callback(const char *topic, const uint8_t *data, int len)
+static void mqtt_handle_control_message(const uint8_t *data, int len)
 {
-    ESP_LOGI(TAG, "topic: %s, data: %.*s", topic, len, data);
-    if (strcmp(topic, mqtt_topic_control()) != 0)
-    {
-        return;
-    }
-
     // 解析 JSON
     char json[256];
     if (len >= (int)sizeof(json))
     {
-        len = sizeof(json) - 1;
+        ESP_LOGE(TAG, "控制消息过长: %d (最大 %d)", len, sizeof(json) - 1);
+        mqtt_publish_error(1001, "control message too long");
+        return;
     }
     memcpy(json, data, len);
     json[len] = '\0';
@@ -79,7 +75,7 @@ static void mqtt_control_callback(const char *topic, const uint8_t *data, int le
 
     const char *cmd_str = cmd->valuestring;
 
-    // 根据命令分发
+    // 根据命令分发到具体处理函数
     if (strcmp(cmd_str, CMD_MOS_SINGLE) == 0)
     {
         mqtt_handle_mos_control(root);
@@ -99,6 +95,146 @@ static void mqtt_control_callback(const char *topic, const uint8_t *data, int le
     }
 
     cJSON_Delete(root);
+}
+
+static void mqtt_handle_ota_message(const uint8_t *data, int len)
+{
+    ESP_LOGI(TAG, "收到 OTA 消息, 长度: %d", len);
+
+    // 解析 JSON
+    char json[512]; // OTA 消息可能包含 URL，需要更大缓冲区
+    if (len >= (int)sizeof(json))
+    {
+        ESP_LOGE(TAG, "OTA 消息过长: %d (最大 %d)", len, sizeof(json) - 1);
+        // OTA 错误上报
+        mqtt_publish_error(2001, "ota message too long");
+        return;
+    }
+    memcpy(json, data, len);
+    json[len] = '\0';
+
+    cJSON *root = cJSON_Parse(json);
+    if (root == NULL)
+    {
+        ESP_LOGE(TAG, "OTA JSON 解析失败: %s", json);
+        mqtt_publish_error(2002, "ota json parse failed");
+        return;
+    }
+
+    // 获取 OTA 必需字段
+    cJSON *url = cJSON_GetObjectItem(root, "url");
+    if (!url || !cJSON_IsString(url))
+    {
+        ESP_LOGE(TAG, "OTA 缺少 url 字段");
+        mqtt_publish_error(2003, "ota missing url field");
+        cJSON_Delete(root);
+        return;
+    }
+
+    // 可选字段：版本号、校验和等
+    cJSON *version = cJSON_GetObjectItem(root, "version");
+    cJSON *md5 = cJSON_GetObjectItem(root, "md5");
+
+    ESP_LOGI(TAG, "OTA 升级: URL=%s, Version=%s",
+             url->valuestring,
+             version ? version->valuestring : "unknown");
+
+    // 启动 OTA 升级任务（异步处理，避免阻塞 MQTT 事件循环）
+    // 这里可以发送信号量或消息队列到 OTA 任务
+    // ota_start_update(url->valuestring, md5 ? md5->valuestring : NULL);
+
+    cJSON_Delete(root);
+
+    // 回复 OTA 已接收
+    // mqtt_publish_response(200, "OTA upgrade started");
+}
+
+static void mqtt_handle_config_message(const uint8_t *data, int len)
+{
+    ESP_LOGI(TAG, "收到配置消息, 长度: %d", len);
+
+    // 解析 JSON
+    char json[256];
+    if (len >= (int)sizeof(json))
+    {
+        ESP_LOGE(TAG, "配置消息过长: %d (最大 %d)", len, sizeof(json) - 1);
+        mqtt_publish_error(3001, "config message too long");
+        return;
+    }
+    memcpy(json, data, len);
+    json[len] = '\0';
+
+    cJSON *root = cJSON_Parse(json);
+    if (root == NULL)
+    {
+        ESP_LOGE(TAG, "配置 JSON 解析失败: %s", json);
+        mqtt_publish_error(3002, "config json parse failed");
+        return;
+    }
+
+    // 处理配置项
+    // 示例配置结构: {"config": {"wifi_ssid": "xxx", "wifi_password": "yyy", "log_level": 3}}
+    cJSON *config = cJSON_GetObjectItem(root, "config");
+    if (!config || !cJSON_IsObject(config))
+    {
+        ESP_LOGE(TAG, "配置缺少 config 对象");
+        mqtt_publish_error(3003, "missing config object");
+        cJSON_Delete(root);
+        return;
+    }
+
+    // 遍历配置项
+    cJSON *item = config->child;
+    while (item)
+    {
+        if (cJSON_IsString(item))
+        {
+            ESP_LOGI(TAG, "配置项: %s = %s", item->string, item->valuestring);
+            // 应用到系统
+            // config_set_string(item->string, item->valuestring);
+        }
+        else if (cJSON_IsNumber(item))
+        {
+            ESP_LOGI(TAG, "配置项: %s = %d", item->string, item->valueint);
+            // config_set_int(item->string, item->valueint);
+        }
+        item = item->next;
+    }
+
+    cJSON_Delete(root);
+
+    // 保存配置到 NVS
+    // nvs_save_config();
+
+    // 回复配置已应用
+    // mqtt_publish_response(300, "config applied");
+}
+
+
+/*
+    MQTT收到数据回调,这里面可以添加分流处理逻辑
+*/
+static void mqtt_control_callback(const char *topic, const uint8_t *data, int len)
+{
+    ESP_LOGI(TAG, "topic: %s, data: %.*s", topic, len, data);
+
+    // 根据主题分流到不同的处理函数
+    if (strcmp(topic, mqtt_topic_control()) == 0)
+    {
+        mqtt_handle_control_message(data, len);
+    }
+    else if (strcmp(topic, mqtt_topic_ota()) == 0)
+    {
+        mqtt_handle_ota_message(data, len);
+    }
+    else if (strcmp(topic, mqtt_topic_config()) == 0)
+    {
+        mqtt_handle_config_message(data, len);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "未知主题: %s", topic);
+    }
 }
 
 static void mqtt_handle_mos_control(cJSON *root)
@@ -131,7 +267,7 @@ static void mqtt_handle_mos_control(cJSON *root)
     }
     if (MOS_Control(ch, st ? MOS_ON : MOS_OFF))
     {
-        mqtt_publish_mos_event(ch, st);
+        mqtt_publish_mos_event(ch, MOS_Get_State(ch));
     }
     else
     {
@@ -242,15 +378,15 @@ static void mqtt_publish_mos_event(uint8_t ch, uint8_t state)
     发布错误事件
 */
 
-static void mqtt_publish_error(uint16_t code, const char *msg)
+static void mqtt_publish_error(int error_code, const char *error_msg)
 {
-    char *data = mqtt_message_create_error(code, msg);
+    char *data = mqtt_message_create_error(error_code, error_msg);
     if (data != NULL)
     {
         mqtt_manager_publish(mqtt_topic_event(), data, strlen(data), 1, false);
         free(data);
     }
-    ESP_LOGW(TAG, "MQTT ERROR: code=%d, msg=%s", code, msg);
+    ESP_LOGW(TAG, "MQTT ERROR: code=%d, msg=%s", error_code, error_msg);
 }
 
 /*

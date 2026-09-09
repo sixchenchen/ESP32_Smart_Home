@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SENSOR_CACHE_SIZE 64u
+#define SENSOR_CACHE_SIZE 256u
 #define SENSOR_ITEM_SIZE 7u
 
 typedef struct

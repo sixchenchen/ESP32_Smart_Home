@@ -4,6 +4,9 @@
 #include "esp_err.h"
 
 #define WIFI_MAX_RETRY 3
+#define MIN_RETRY_DELAY_MS 1000  // 初始延时 1秒
+#define MAX_RETRY_DELAY_MS 60000 // 最大延时 60秒
+#define RETRY_DELAY_MULTIPLIER 2 // 指数增长倍数
 
 // 当前状态
 typedef enum
@@ -42,5 +45,8 @@ void wifi_manager_set_wifi(const char *ssid, const char *password);
 void wifi_manager_clear_config(void);
 bool wifi_manager_need_config(void);
 void wifi_manager_factory_reset(void);
+
+void wifi_manager_set_mqtt_ready(bool ready);
+bool wifi_manager_get_mqtt_ready(void);
 
 #endif

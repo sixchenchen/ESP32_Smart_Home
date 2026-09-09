@@ -76,7 +76,7 @@ esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password)
         return ESP_FAIL;
     }
 
-    // 6. 连接
+    // 6. 连接,连接成功后会触发事件回调
     ret = esp_wifi_connect();
     if (ret != ESP_OK)
     {
@@ -97,7 +97,7 @@ esp_err_t wifi_mode_switch_sta(void)
 {
     wifi_mode_t mode;
     ESP_ERROR_CHECK(esp_wifi_get_mode(&mode));
-    if (mode == WIFI_MODE_APSTA)
+    if (mode == WIFI_MODE_APSTA || mode == WIFI_MODE_AP)
     {
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_LOGI(TAG, "APSTA -> STA");
@@ -106,9 +106,7 @@ esp_err_t wifi_mode_switch_sta(void)
 }
 
 /*
-    连接失败
-    STA -> APSTA
-    重新开启手机配网
+    连接失败：STA -> APSTA,重新开启手机配网
 */
 esp_err_t wifi_mode_switch_apsta(void)
 {

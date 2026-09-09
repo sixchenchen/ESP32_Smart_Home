@@ -5,6 +5,7 @@
 #include "mqtt_topic.h"
 #include "key.h"
 #include "led.h"
+#include "led_status.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -12,7 +13,6 @@
 #include "esp_log.h"
 
 static const char *TAG = "KEY_MANAGER";
-static bool s_led_lock = false;
 
 // 发布恢复出厂事件
 static void publish_factory_reset_event(void)
@@ -57,11 +57,6 @@ static void key_manager_task(void *arg)
     QueueHandle_t queue = key_get_queue();
     while (1)
     {
-        if (s_led_lock)
-        {
-            vTaskDelay(pdMS_TO_TICKS(200));
-            continue;
-        }
         if (xQueueReceive(queue, &event, portMAX_DELAY))
         {
             switch (event)
@@ -82,6 +77,8 @@ static void key_manager_task(void *arg)
                 vTaskDelay(pdMS_TO_TICKS(100));
                 // 再执行恢复出厂（断开连接）
                 wifi_manager_factory_reset();
+                // 解锁 LED 状态机
+                led_status_lock(false);
                 break;
             default:
                 break;
@@ -101,9 +98,4 @@ void key_manager_start(void)
         NULL,
         5,
         NULL);
-}
-
-void led_status_lock(bool lock)
-{
-    s_led_lock = lock;
 }

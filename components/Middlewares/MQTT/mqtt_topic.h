@@ -19,4 +19,7 @@ const char *mqtt_topic_will(void);
 
 const char *mqtt_topic_sensor(void);
 
+const char *mqtt_topic_ota(void);
+
+const char *mqtt_topic_config(void);
 #endif
