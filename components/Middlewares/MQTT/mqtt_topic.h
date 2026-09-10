@@ -22,4 +22,8 @@ const char *mqtt_topic_sensor(void);
 const char *mqtt_topic_ota(void);
 
 const char *mqtt_topic_config(void);
+
+const char *mqtt_topic_provision_register(void);
+
+const char *mqtt_topic_provision_config(void);
 #endif

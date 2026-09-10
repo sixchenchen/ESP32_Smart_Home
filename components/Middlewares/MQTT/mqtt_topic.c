@@ -14,6 +14,8 @@ static char will[80];
 static char sensor[80];
 static char ota[80];
 static char config[80];
+static char provision_register[128];
+static char provision_config[128];
 
 void mqtt_topic_init(void)
 {
@@ -27,6 +29,8 @@ void mqtt_topic_init(void)
     snprintf(sensor, sizeof(sensor), "device/%s/sensor", dev->device_id);
     snprintf(ota, sizeof(ota), "device/%s/ota", dev->device_id);
     snprintf(config, sizeof(config), "device/%s/config", dev->device_id);
+    snprintf(provision_register, sizeof(provision_register), "/provision/device/%s/register", dev->device_id);
+    snprintf(provision_config, sizeof(provision_config), "/provision/device/%s/config/response", dev->device_id);
 }
 
 const char *mqtt_topic_control(void)
@@ -77,4 +81,14 @@ const char *mqtt_topic_ota(void)
 const char *mqtt_topic_config(void)
 {
     return config;
+}
+
+const char *mqtt_topic_provision_register(void)
+{
+    return provision_register;
+}
+
+const char *mqtt_topic_provision_config(void)
+{
+    return provision_config;
 }

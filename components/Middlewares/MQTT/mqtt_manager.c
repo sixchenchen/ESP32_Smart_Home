@@ -7,6 +7,7 @@
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
 #include "wifi_manager.h"
+#include "mqtt_config.h"
 
 static const char *TAG = "MQTT";
 

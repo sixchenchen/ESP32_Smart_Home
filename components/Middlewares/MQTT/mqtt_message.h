@@ -27,4 +27,6 @@ char *mqtt_message_create_sensor_data(uint8_t sensor_id, uint32_t timestamp_ms, 
 
 char *mqtt_message_create_sensor_batch(const uint8_t *data, uint8_t count);
 
+char *mqtt_message_create_register_request(void);
+
 #endif

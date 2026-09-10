@@ -12,6 +12,7 @@
 #include "mqtt_manager.h"
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
+#include "mqtt_provision.h"
 
 static const char *TAG = "MQTT_SERVICE";
 static TaskHandle_t heartbeat_handle = NULL;
@@ -210,7 +211,6 @@ static void mqtt_handle_config_message(const uint8_t *data, int len)
     // mqtt_publish_response(300, "config applied");
 }
 
-
 /*
     MQTT收到数据回调,这里面可以添加分流处理逻辑
 */
@@ -218,7 +218,10 @@ static void mqtt_control_callback(const char *topic, const uint8_t *data, int le
 {
     ESP_LOGI(TAG, "topic: %s, data: %.*s", topic, len, data);
 
-    // 根据主题分流到不同的处理函数
+    if (strcmp(topic, mqtt_topic_provision_config()) == 0)
+    {
+        mqtt_provision_handle_response(data, len);
+    }
     if (strcmp(topic, mqtt_topic_control()) == 0)
     {
         mqtt_handle_control_message(data, len);

@@ -207,3 +207,38 @@ char *mqtt_message_create_sensor_batch(const uint8_t *data, uint8_t count)
     cJSON_AddItemToObject(root, "data", batch);
     return json_finish(root);
 }
+
+// ==================== 注册请求消息（新增） ====================
+/*
+    注册请求消息
+    格式: {
+        "device_id": "xxx",
+        "product_id": "xxx",
+        "hardware_version": "V1.0",
+        "firmware_version": "1.0.0",
+        "action": "register",
+        "timestamp": 1234567890
+    }
+*/
+char *mqtt_message_create_register_request(void)
+{
+    const device_context_t *dev = get_device();
+
+    cJSON *root = json_create_object();
+    if (root == NULL)
+    {
+        return NULL;
+    }
+
+    // 设备信息
+    json_add_string(root, "device_id", dev->device_id);
+    json_add_string(root, "product_id", dev->product_id);
+    json_add_string(root, "hardware_version", dev->hardware_version);
+    json_add_string(root, "firmware_version", dev->firmware_version);
+
+    // 注册动作
+    json_add_string(root, "action", "register");
+    json_add_number(root, "timestamp", esp_timer_get_time() / 1000000);
+
+    return json_finish(root);
+}
