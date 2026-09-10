@@ -296,7 +296,6 @@ void wifi_manager_start(void)
         ESP_LOGI(TAG, "found wifi: %s", ssid);
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         wifi_state = WIFI_MANAGER_CONNECTING;
-        // 使用 snprintf 安全复制
         snprintf(g_connecting_ssid, sizeof(g_connecting_ssid), "%s", ssid);
         snprintf(g_connecting_password, sizeof(g_connecting_password), "%s", password);
         wifi_mode_sta_connect(ssid, password);
