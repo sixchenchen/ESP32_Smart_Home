@@ -15,6 +15,11 @@ void json_add_number(cJSON *root, const char *key, int value)
     cJSON_AddNumberToObject(root, key, value);
 }
 
+void json_add_bool(cJSON *root, const char *key, bool value)
+{
+    cJSON_AddBoolToObject(root, key, value);
+}
+
 char *json_finish(cJSON *root)
 {
     char *data = cJSON_PrintUnformatted(root);

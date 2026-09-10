@@ -40,8 +40,9 @@ void mqtt_manager_on_wifi_disconnected(void);
 // 发布消息
 esp_err_t mqtt_manager_publish(const char *topic, const char *data, int len, int qos, bool retain);
 
+void mqtt_manager_factory_reset(void);
+bool mqtt_manager_is_production(void);
 // 回调注册
 void mqtt_manager_register_callback(mqtt_rx_callback_t callback);
 void mqtt_manager_register_status_callback(mqtt_status_callback_t callback);
-
 #endif

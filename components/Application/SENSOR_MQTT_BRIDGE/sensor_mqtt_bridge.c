@@ -27,6 +27,13 @@ static void flush_batch(void)
     {
         return;
     }
+    if (!mqtt_manager_is_production())
+    {
+        ESP_LOGD(TAG, "MQTT not on production broker, batch dropped");
+        s_batch_cache.count = 0;
+        s_batch_cache.first_time_ms = 0;
+        return;
+    }
 
     ESP_LOGI(TAG, "Flushing batch: %d items", s_batch_cache.count);
 
@@ -93,6 +100,11 @@ static void sensor_data_callback(const sensor_data_t *data, void *ctx)
 {
     if (data == NULL)
     {
+        return;
+    }
+    if (!mqtt_manager_is_production())
+    {
+        ESP_LOGD(TAG, "MQTT not on production broker, data dropped");
         return;
     }
     ESP_LOGI(TAG, "Received: id=%d, ts=%lu, count=%d", data->sensor_id, data->timestamp_ms, data->count);

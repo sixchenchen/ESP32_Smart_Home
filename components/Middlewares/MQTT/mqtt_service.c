@@ -13,6 +13,7 @@
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
 #include "mqtt_provision.h"
+#include "mqtt_config.h"
 
 static const char *TAG = "MQTT_SERVICE";
 static TaskHandle_t heartbeat_handle = NULL;
@@ -303,9 +304,16 @@ static void mqtt_status_callback(mqtt_state_t state)
     {
     case MQTT_STATE_RUNNING:
         ESP_LOGI(TAG, "MQTT 已连接");
-        mqtt_publish_status(true);
-        mqtt_publish_mos_state();
-        mqtt_start_heartbeat();
+        if (mqtt_config_is_provisioned())
+        {
+            mqtt_publish_status(true);
+            mqtt_publish_mos_state();
+            mqtt_start_heartbeat();
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Provisioning stage, skip business messages");
+        }
         break;
 
     case MQTT_STATE_STOPPED:

@@ -7,12 +7,12 @@
 
 typedef enum
 {
-    PIN_RESET = 0,
-    PIN_SET = 1,
+    LED_ON = 0,
+    LED_OFF = 1,
 } GPIO_OUTPUT_STATE;
 
-#define LED_ON() gpio_set_level(LED_GPIO_PIN, PIN_RESET)
-#define LED_OFF() gpio_set_level(LED_GPIO_PIN, PIN_SET)
+#define LED_ON() gpio_set_level(LED_GPIO_PIN, LED_ON)
+#define LED_OFF() gpio_set_level(LED_GPIO_PIN, LED_OFF)
 #define LED_TOGGLE() led_toggle()
 
 // LED 模式定义

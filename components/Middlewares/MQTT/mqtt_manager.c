@@ -7,7 +7,7 @@
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
 #include "wifi_manager.h"
-#include "mqtt_config.h"
+#include "device_context.h"
 
 static const char *TAG = "MQTT";
 
@@ -15,6 +15,7 @@ static esp_mqtt_client_handle_t mqtt_client = NULL;
 static mqtt_rx_callback_t rx_callback = NULL;
 static mqtt_status_callback_t status_callback = NULL;
 static char *will_message = NULL;
+static bool s_is_provisioned = false;
 
 // MQTT 状态
 static mqtt_state_t mqtt_state = MQTT_STATE_UNINIT;
@@ -68,6 +69,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         wifi_manager_set_mqtt_ready(true);
         mqtt_set_state(MQTT_STATE_RUNNING);
         mqtt_manager_subscribe(mqtt_topic_control(), 1);
+        mqtt_manager_subscribe(mqtt_topic_provision_config(), 1);
         break;
 
     case MQTT_EVENT_DISCONNECTED:
@@ -106,25 +108,33 @@ esp_err_t mqtt_manager_init(void)
     {
         return ESP_OK;
     }
+
+    // 从 NVS 加载配置
+    mqtt_config_t config;
+    mqtt_config_load(&config);
+    s_is_provisioned = config.is_provisioned;
     mqtt_topic_init();
+
     will_message = mqtt_message_create_will();
     if (will_message == NULL)
     {
         return ESP_FAIL;
     }
+
     esp_mqtt_client_config_t mqtt_cfg =
         {
-            .broker.address.uri = MQTT_BROKER_URI,
+            .broker.address.uri = config.broker_uri, // ← 动态
             .credentials =
                 {
-                    .username = MQTT_USERNAME,
-                    .authentication.password = MQTT_PASSWORD,
+                    .client_id = config.client_id,              // ← 动态
+                    .username = config.username,                // ← 动态
+                    .authentication.password = config.password, // ← 动态
                 },
             .session =
                 {
                     .last_will =
                         {
-                            .topic = mqtt_topic_will(),
+                            .topic = config.will_topic, // ← 动态
                             .msg = will_message,
                             .msg_len = strlen(will_message),
                             .qos = WILL_QOS,
@@ -137,7 +147,8 @@ esp_err_t mqtt_manager_init(void)
                 .disable_auto_reconnect = false,
             }
 
-        };
+    };
+
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
     if (mqtt_client == NULL)
     {
@@ -145,12 +156,13 @@ esp_err_t mqtt_manager_init(void)
         will_message = NULL;
         return ESP_FAIL;
     }
-    // 注册事件处理
+
     esp_mqtt_client_register_event(
         mqtt_client,
         ESP_EVENT_ANY_ID,
         mqtt_event_handler,
         NULL);
+
     mqtt_set_state(MQTT_STATE_INIT);
     return ESP_OK;
 }
@@ -318,6 +330,33 @@ esp_err_t mqtt_manager_subscribe(const char *topic, int qos)
     return id >= 0 ? ESP_OK : ESP_FAIL;
 }
 
+bool mqtt_manager_is_production(void)
+{
+    if (mqtt_state != MQTT_STATE_RUNNING)
+    {
+        return false;
+    }
+    return s_is_provisioned;
+}
+
+/*
+    MQTT 恢复出厂设置
+ */
+void mqtt_manager_factory_reset(void)
+{
+    ESP_LOGW(TAG, "MQTT factory reset");
+
+    // 1. 停止 MQTT
+    mqtt_manager_stop();
+
+    // 2. 销毁客户端
+    mqtt_manager_destroy();
+
+    // 3. 清除 NVS 里的 MQTT 配置
+    mqtt_config_clear();
+
+    ESP_LOGI(TAG, "MQTT config cleared");
+}
 // 回调注册
 void mqtt_manager_register_callback(mqtt_rx_callback_t callback)
 {

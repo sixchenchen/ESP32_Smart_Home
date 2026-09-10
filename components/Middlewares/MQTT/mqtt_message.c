@@ -106,6 +106,7 @@ char *mqtt_message_create_mos_event(uint8_t channel, uint8_t state)
     json_add_string(data, JSON_EVENT, EVENT_MOS_CHANGE);
     json_add_number(data, JSON_CHANNEL, channel);
     json_add_number(data, JSON_STATE, state);
+    json_add_bool(data, JSON_SUCCESS, true); 
     cJSON *root = create_message_with_data(TYPE_EVENT, data);
     return json_finish(root);
 }

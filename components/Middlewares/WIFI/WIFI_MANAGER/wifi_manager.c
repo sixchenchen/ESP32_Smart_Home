@@ -15,6 +15,8 @@
 #include "mqtt_service.h"
 #include "esp_timer.h"
 #include "esp_random.h"
+#include "mqtt_config.h"
+#include "mqtt_provision.h"
 
 static const char *TAG = "wifi_manager";
 bool mqtt_ready_for_mode_switch = false;
@@ -195,7 +197,17 @@ static void wifi_manager_handle_connected(void)
     mqtt_ready_for_mode_switch = false;
     //  MQTT启动
     mqtt_service_init();
-    mqtt_manager_on_wifi_connected();
+    if (mqtt_config_is_provisioned())
+    {
+        ESP_LOGI(TAG, "already provisioned, connect to production broker");
+        mqtt_manager_on_wifi_connected();
+    }
+    else
+    {
+        ESP_LOGI(TAG, "not provisioned, starting provision");
+        mqtt_manager_on_wifi_connected();
+        mqtt_provision_start();
+    }
     // 创建连接成功延时4s
     xTaskCreate(delayed_switch_to_sta_task, "delay_sta", 2048, NULL, 5, &delayed_switch_task_handle);
 }
@@ -368,8 +380,8 @@ void wifi_manager_factory_reset(void)
     }
     // 重置 MQTT 就绪标志
     mqtt_ready_for_mode_switch = false;
-    // 停止 MQTT
-    mqtt_manager_stop();
+    // 停止 MQTT 服务,清空配置
+    mqtt_manager_factory_reset();
     // 禁止自动重连
     wifi_factory_reset_flag = true;
     // 停止wifi

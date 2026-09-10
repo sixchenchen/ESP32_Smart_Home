@@ -37,44 +37,22 @@ void MOS_Init(void)
     MOS_All_Control(MOS_OFF);
 }
 
-// 单路控制 
+// 单路控制
 uint8_t MOS_Control(uint8_t channel, MOS_State state)
 {
     if (channel >= MOS_CHANNEL_NUM)
-    {
         return 0;
-    }
 
-    // 加锁
-    if (mos_mutex != NULL && xSemaphoreTake(mos_mutex, portMAX_DELAY) == pdTRUE)
-    {
-        gpio_set_level(mos_gpio[channel], (uint32_t)state);
+    if (xSemaphoreTake(mos_mutex, portMAX_DELAY) != pdTRUE)
+        return 0;
 
-        if (state == MOS_ON)
-        {
-            mos_state |= (1U << channel);
-        }
-        else
-        {
-            mos_state &= ~(1U << channel);
-        }
-
-        // 解锁
-        xSemaphoreGive(mos_mutex);
-    }
+    gpio_set_level(mos_gpio[channel], (uint32_t)state);
+    if (state == MOS_ON)
+        mos_state |= (1U << channel);
     else
-    {
-        // 互斥锁不可用，直接操作（降级方案）
-        gpio_set_level(mos_gpio[channel], (uint32_t)state);
-        if (state == MOS_ON)
-        {
-            mos_state |= (1U << channel);
-        }
-        else
-        {
-            mos_state &= ~(1U << channel);
-        }
-    }
+        mos_state &= ~(1U << channel);
+
+    xSemaphoreGive(mos_mutex);
     return 1;
 }
 

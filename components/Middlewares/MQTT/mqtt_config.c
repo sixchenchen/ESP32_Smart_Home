@@ -36,7 +36,7 @@ void mqtt_config_get_default(mqtt_config_t *config)
 // ========== 加载配置 ==========
 esp_err_t mqtt_config_load(mqtt_config_t *config)
 {
-    if (config == NULL)
+    if (config == NULL) // 这里面判断的是地址
         return ESP_ERR_INVALID_ARG;
 
     memset(config, 0, sizeof(mqtt_config_t));

@@ -36,6 +36,7 @@
 #define JSON_STATE "state"
 #define JSON_CODE "code"
 #define JSON_MESSAGE "message"
+#define JSON_SUCCESS "success"
 // ==================== 消息类型 ====================
 #define TYPE_HEARTBEAT "heartbeat"
 #define TYPE_EVENT "event"
@@ -55,7 +56,7 @@
 #define CMD_MOS_ALL "mos_all"
 #define CMD_MOS_QUERY "mos_query"
 // ==================== 心跳 ====================
-#define HEARTBEAT_INTERVAL_MS 5000
+#define HEARTBEAT_INTERVAL_MS 30000
 
 // ==================== MQTT 配置结构体 ====================
 typedef struct

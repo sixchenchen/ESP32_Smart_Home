@@ -91,8 +91,7 @@ esp_err_t uart_drv_init(void)
         &uart_queue,
         0));
 
-    // priority 从 10 降到 7：与 sensor_task(7) / esp-mqtt / WiFi 在同一区间，
-    // 避免 UART 采集任务抢占网络栈调度
+    // priority 从 10 降到 7：与 sensor_task(7) / esp-mqtt / WiFi 在同一区间，避免 UART 采集任务抢占网络栈调度
     xTaskCreate(uart_task, "uart_task", 8192, NULL, 7, NULL);
     ESP_LOGI(TAG, "UART driver initialized");
     return ESP_OK;
@@ -104,8 +103,8 @@ esp_err_t uart_drv_send(const uint8_t *data, uint16_t len)
     {
         return ESP_ERR_INVALID_ARG;
     }
-    // timeout_ms=0 非阻塞：TX FIFO 满时立即返回已写入字节数，不等待空间,timeout_ms=-1 会一直等到全部写入（原阻塞行为，协议层发 ACK 会把 sensor_task 卡住）
-    int written = uart_write_bytes_with_break(UART_PORT_NUM, (const char *)data, len, 0);
+  
+    int written = uart_write_bytes(UART_PORT_NUM, (const char *)data, len);
     if (written < 0)
     {
         return ESP_FAIL;

@@ -5,7 +5,7 @@
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
 #include "device_context.h"
-#include "mqtt_topic.h" 
+#include "mqtt_topic.h"
 #include "mqtt_config.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
+#include "mqtt_service.h"
 
 static const char *TAG = "provision";
 
@@ -147,8 +148,7 @@ void mqtt_provision_handle_response(const uint8_t *data, int len)
     if (strcmp(status->valuestring, "success") != 0)
     {
         cJSON *msg = cJSON_GetObjectItem(root, "message");
-        ESP_LOGE(TAG, "Registration failed: %s",
-                 msg ? msg->valuestring : "unknown");
+        ESP_LOGE(TAG, "Registration failed: %s", msg ? msg->valuestring : "unknown");
         cJSON_Delete(root);
         prov_set_state(PROV_STATE_FAILED);
         return;
@@ -172,48 +172,41 @@ void mqtt_provision_handle_response(const uint8_t *data, int len)
     item = cJSON_GetObjectItem(config, "broker_uri");
     if (item && cJSON_IsString(item))
     {
-        strlcpy(g_received_config.broker_uri, item->valuestring,
-                sizeof(g_received_config.broker_uri));
+        strlcpy(g_received_config.broker_uri, item->valuestring, sizeof(g_received_config.broker_uri));
     }
 
     item = cJSON_GetObjectItem(config, "client_id");
     if (item && cJSON_IsString(item))
     {
-        strlcpy(g_received_config.client_id, item->valuestring,
-                sizeof(g_received_config.client_id));
+        strlcpy(g_received_config.client_id, item->valuestring, sizeof(g_received_config.client_id));
     }
     else
     {
         // 如果服务器没下发，使用设备ID
         const device_context_t *dev = device_context_get();
-        strlcpy(g_received_config.client_id, dev->device_id,
-                sizeof(g_received_config.client_id));
+        strlcpy(g_received_config.client_id, dev->device_id, sizeof(g_received_config.client_id));
     }
 
     item = cJSON_GetObjectItem(config, "username");
     if (item && cJSON_IsString(item))
     {
-        strlcpy(g_received_config.username, item->valuestring,
-                sizeof(g_received_config.username));
+        strlcpy(g_received_config.username, item->valuestring, sizeof(g_received_config.username));
     }
 
     item = cJSON_GetObjectItem(config, "password");
     if (item && cJSON_IsString(item))
     {
-        strlcpy(g_received_config.password, item->valuestring,
-                sizeof(g_received_config.password));
+        strlcpy(g_received_config.password, item->valuestring, sizeof(g_received_config.password));
     }
 
     item = cJSON_GetObjectItem(config, "will_topic");
     if (item && cJSON_IsString(item))
     {
-        strlcpy(g_received_config.will_topic, item->valuestring,
-                sizeof(g_received_config.will_topic));
+        strlcpy(g_received_config.will_topic, item->valuestring, sizeof(g_received_config.will_topic));
     }
     else
     {
-        snprintf(g_received_config.will_topic, sizeof(g_received_config.will_topic),
-                 "device/%s/will", g_received_config.client_id);
+        strlcpy(g_received_config.will_topic, mqtt_topic_will(), sizeof(g_received_config.will_topic));
     }
 
     cJSON_Delete(root);
@@ -221,9 +214,7 @@ void mqtt_provision_handle_response(const uint8_t *data, int len)
     g_config_received = true;
     prov_set_state(PROV_STATE_SUCCESS);
 
-    ESP_LOGI(TAG, "✓ Registration successful!");
-    ESP_LOGI(TAG, "  Broker: %s", g_received_config.broker_uri);
-    ESP_LOGI(TAG, "  Client ID: %s", g_received_config.client_id);
+    ESP_LOGI(TAG, "Registration successful!");
 }
 
 // ==================== 注册任务 ====================
@@ -236,7 +227,8 @@ static void mqtt_provision_task(void *arg)
 
     int wait_count = 0;
     while (!mqtt_manager_is_running() && wait_count < 100)
-    { // 最多等 10 秒
+    {
+        // 最多等 10 秒
         vTaskDelay(pdMS_TO_TICKS(100));
         wait_count++;
     }
@@ -292,7 +284,12 @@ static void mqtt_provision_task(void *arg)
                 }
                 else
                 {
-                    ESP_LOGI(TAG, "✓ Provision complete! Config saved.");
+                    ESP_LOGI(TAG, "Provision complete! Reconnecting to production broker...");
+                    mqtt_manager_stop();
+                    mqtt_manager_destroy();
+                    mqtt_service_init();              
+                    mqtt_manager_on_wifi_connected(); 
+
                     prov_set_state(PROV_STATE_SUCCESS);
                 }
                 goto prov_done;
@@ -330,13 +327,6 @@ prov_done:
 // ==================== 启动注册 ====================
 esp_err_t mqtt_provision_start(void)
 {
-    // 检查是否已注册
-    if (mqtt_config_is_provisioned())
-    {
-        ESP_LOGI(TAG, "Already provisioned, skipping");
-        return ESP_OK;
-    }
-
     // 检查任务是否已运行
     if (g_prov_task_handle != NULL)
     {
