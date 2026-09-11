@@ -1,7 +1,31 @@
-# ESP-IDF 构建输出
+# ========== ESP-IDF 构建输出（必忽略） ==========
 build/
-sdkconfig
+managed_components/
 sdkconfig.old
+
+# ========== IDE 文件 ==========
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ========== Python 缓存 ==========
+__pycache__/
+*.pyc
+*.pyo
+
+# ========== 临时/日志文件 ==========
+*.log
+*.tmp
+*.bak
+*.backup
+
+# ========== 操作系统文件 ==========
+.DS_Store
+Thumbs.db
+
+# ========== 编译产物（不入库） ==========
 *.bin
 *.elf
 *.map
@@ -9,32 +33,3 @@ sdkconfig.old
 *.a
 *.so
 *.d
-
-# IDE 文件
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Python 缓存
-__pycache__/
-*.pyc
-*.pyo
-
-# 日志文件
-*.log
-*.txt
-
-# 依赖管理
-managed_components/
-dependencies.lock
-
-# 临时文件
-*.tmp
-*.bak
-*.backup
-
-# 操作系统文件
-.DS_Store
-Thumbs.db
