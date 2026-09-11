@@ -14,7 +14,6 @@
 #define SEN_MAX_FRAME_LEN (1u + 1u + 1u + 1u + 2u + SEN_MAX_DATA_LEN + 1u) // 帧最大长度：HEAD(1) + ADDR(1) + CMD(1) + SEQ(1) + LEN(2) + DATA(N) + CRC(1)
 #define SEN_ACK_TIMEOUT_MS 50u
 #define SEN_MAX_RETRY 3u
-#define SEN_ITEM_SIZE 9u // 每条数据 9 字节：sensor_id(1) + timestamp(4) + value(4)
 
 typedef enum
 {

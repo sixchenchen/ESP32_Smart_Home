@@ -1,21 +1,20 @@
 #include "mqtt_service.h"
 #include "mqtt_manager.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_log.h"
-#include "cJSON.h"
-#include "mos.h"
-#include <stdio.h>
-#include <string.h>
-#include "esp_timer.h"
 #include "mqtt_config.h"
-#include "mqtt_manager.h"
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
 #include "mqtt_provision.h"
-#include "mqtt_config.h"
+#include "ota.h"
+#include "mos.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "cJSON.h"
+#include <stdio.h>
+#include <string.h>
 
-static const char *TAG = "MQTT_SERVICE";
+static const char *TAG = "mqtt_service";
 static TaskHandle_t heartbeat_handle = NULL;
 
 /*
@@ -99,33 +98,43 @@ static void mqtt_handle_control_message(const uint8_t *data, int len)
     cJSON_Delete(root);
 }
 
+/*
+    OTA 消息处理
+    策略：从 url 字段里 strstr("http://") 找到 scheme 起点，
+          再 strstr(".bin") 找到固件名终点，精准截取合法 URL。
+          无论 MQTTX 用户粘贴什么脏字符（反引号/Unicode/空格）都能工作。
+    订阅：device/B4BFE90CDBA0/ota
+    {
+        "url":"http://192.168.124.6:8000/build/sample_project.bin",
+        "version":"1.0.29"
+    }
+*/
 static void mqtt_handle_ota_message(const uint8_t *data, int len)
 {
     ESP_LOGI(TAG, "收到 OTA 消息, 长度: %d", len);
 
-    // 解析 JSON
-    char json[512]; // OTA 消息可能包含 URL，需要更大缓冲区
-    if (len >= (int)sizeof(json))
+    if (len < 4 || len >= 512)
     {
-        ESP_LOGE(TAG, "OTA 消息过长: %d (最大 %d)", len, sizeof(json) - 1);
-        // OTA 错误上报
-        mqtt_publish_error(2001, "ota message too long");
+        ESP_LOGE(TAG, "OTA 消息长度异常: %d", len);
+        mqtt_publish_error(2001, "ota message bad length");
         return;
     }
+
+    char json[512];
     memcpy(json, data, len);
     json[len] = '\0';
 
     cJSON *root = cJSON_Parse(json);
     if (root == NULL)
     {
-        ESP_LOGE(TAG, "OTA JSON 解析失败: %s", json);
+        ESP_LOGE(TAG, "OTA JSON 解析失败");
         mqtt_publish_error(2002, "ota json parse failed");
         return;
     }
 
-    // 获取 OTA 必需字段
-    cJSON *url = cJSON_GetObjectItem(root, "url");
-    if (!url || !cJSON_IsString(url))
+    // ── url ──
+    cJSON *url_item = cJSON_GetObjectItem(root, "url");
+    if (!url_item || !cJSON_IsString(url_item))
     {
         ESP_LOGE(TAG, "OTA 缺少 url 字段");
         mqtt_publish_error(2003, "ota missing url field");
@@ -133,22 +142,83 @@ static void mqtt_handle_ota_message(const uint8_t *data, int len)
         return;
     }
 
-    // 可选字段：版本号、校验和等
-    cJSON *version = cJSON_GetObjectItem(root, "version");
-    cJSON *md5 = cJSON_GetObjectItem(root, "md5");
+    const char *raw = url_item->valuestring;
 
-    ESP_LOGI(TAG, "OTA 升级: URL=%s, Version=%s",
-             url->valuestring,
-             version ? version->valuestring : "unknown");
+    // 定位 scheme：https:// 优先
+    const char *scheme = strstr(raw, "https://");
+    if (scheme == NULL)
+        scheme = strstr(raw, "http://");
 
-    // 启动 OTA 升级任务（异步处理，避免阻塞 MQTT 事件循环）
-    // 这里可以发送信号量或消息队列到 OTA 任务
-    // ota_start_update(url->valuestring, md5 ? md5->valuestring : NULL);
+    char url_clean[256] = {0};
+
+    if (scheme != NULL)
+    {
+        const char *end = strstr(scheme, ".bin");
+        if (end != NULL)
+        {
+            end += 4; // ".bin"
+            if (strncmp(end, ".gz", 3) == 0)
+                end += 3;
+            int n = (int)(end - scheme);
+            if (n > 0 && n < (int)sizeof(url_clean))
+            {
+                memcpy(url_clean, scheme, n);
+                url_clean[n] = '\0';
+            }
+        }
+        else
+        {
+            int n = (int)strlen(scheme);
+            while (n > 0 && (unsigned char)scheme[n - 1] > 0x7E)
+                n--; // trim
+            memcpy(url_clean, scheme, n);
+            url_clean[n] = '\0';
+        }
+    }
+
+    if (url_clean[0] == '\0')
+    {
+        ESP_LOGE(TAG, "OTA url 提取失败! raw='%s'", raw);
+        cJSON_Delete(root);
+        mqtt_publish_error(2004, "ota url extract failed");
+        return;
+    }
+
+    // ── version（可选）──
+    char ver_clean[32] = {0};
+    cJSON *ver_item = cJSON_GetObjectItem(root, "version");
+    if (ver_item && cJSON_IsString(ver_item))
+    {
+        const char *v = ver_item->valuestring;
+        while (*v && (unsigned char)*v <= 0x20)
+            v++;
+        int n = (int)strlen(v);
+        while (n > 0 && (unsigned char)v[n - 1] <= 0x20)
+            n--;
+        memcpy(ver_clean, v, n);
+        ver_clean[n] = '\0';
+    }
+
+    ESP_LOGI(TAG, "OTA: url='%s', version='%s'",
+             url_clean, ver_clean[0] ? ver_clean : "unknown");
 
     cJSON_Delete(root);
 
-    // 回复 OTA 已接收
-    // mqtt_publish_response(200, "OTA upgrade started");
+    // ── 启动 OTA（异步）──
+    ota_result_t r = ota_start(url_clean, ver_clean[0] ? ver_clean : NULL, NULL, NULL);
+    if (r == OTA_RESULT_OK)
+    {
+        ESP_LOGI(TAG, "OTA 已启动");
+        mqtt_manager_publish(mqtt_topic_state(),
+                             "{\"type\":\"ota\",\"state\":\"started\"}", -1, 0, false);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "OTA 启动失败: result=%d", r);
+        char err[64];
+        snprintf(err, sizeof(err), "{\"type\":\"ota\",\"state\":\"fail\",\"code\":%d}", r);
+        mqtt_manager_publish(mqtt_topic_state(), err, -1, 0, false);
+    }
 }
 
 static void mqtt_handle_config_message(const uint8_t *data, int len)
@@ -217,7 +287,7 @@ static void mqtt_handle_config_message(const uint8_t *data, int len)
 */
 static void mqtt_control_callback(const char *topic, const uint8_t *data, int len)
 {
-    ESP_LOGI(TAG, "topic: %s, data: %.*s", topic, len, data);
+    ESP_LOGI(TAG, "topic: %s", topic);
 
     if (strcmp(topic, mqtt_topic_provision_config()) == 0)
     {

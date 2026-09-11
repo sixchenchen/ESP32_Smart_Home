@@ -2,6 +2,7 @@
 #define __WIFI_MANAGER_H__
 
 #include "esp_err.h"
+#include <stdbool.h>
 
 #define WIFI_MAX_RETRY 3
 #define MIN_RETRY_DELAY_MS 1000  // 初始延时 1秒

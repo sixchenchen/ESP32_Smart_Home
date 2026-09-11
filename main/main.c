@@ -16,6 +16,7 @@
 #include "sensor_mqtt_bridge.h"
 #include "esp_timer.h"
 #include "led_status.h"
+#include "ota.h"
 
 void app_main(void)
 {
@@ -24,6 +25,7 @@ void app_main(void)
     MOS_Init();
     device_context_init();
     nvs_flash_init();
+    ota_post_init();
     wifi_manager_init();
     wifi_manager_start();
     led_status_start();

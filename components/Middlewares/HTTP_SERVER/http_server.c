@@ -5,6 +5,7 @@
 #include "http_server.h"
 #include "wifi_manager.h"
 #include "wifi_scan.h"
+#include "ota.h"
 
 static const char *TAG = "http_server";
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
@@ -350,12 +351,95 @@ static esp_err_t factory_reset_handler(httpd_req_t *req)
 }
 
 /*
+    OTA 状态查询 GET /ota_status
+*/
+static esp_err_t ota_status_handler(httpd_req_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "state", ota_state_to_string(ota_get_state()));
+    cJSON_AddBoolToObject(root, "in_progress", ota_is_in_progress());
+    cJSON_AddStringToObject(root, "current_version", ota_get_current_version());
+
+    char *resp = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, resp);
+    free(resp);
+    return ESP_OK;
+}
+
+/*
+    OTA 升级触发 POST http://192.168.124.7/api/ota
+    Headers: 
+        Content-Type: application/json
+    Body JSON: 
+        {
+            "url": "http://192.168.124.6:8000/build/sample_project.bin",
+            "version": "1.0.30"
+        }
+    
+*/
+static esp_err_t ota_trigger_handler(httpd_req_t *req)
+{
+    /* 限制 body 大小 */
+    char body_buf[512] = {0};
+    size_t total = req->content_len;
+    if (total >= sizeof(body_buf))
+    {
+        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE, "body too large");
+        return ESP_FAIL;
+    }
+    int received = httpd_req_recv(req, body_buf, total);
+    if (received <= 0)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "read body fail");
+        return ESP_FAIL;
+    }
+
+    /* 解析 JSON */
+    cJSON *root = cJSON_Parse(body_buf);
+    if (!root)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+
+    const char *url = cJSON_GetStringValue(cJSON_GetObjectItem(root, "url"));
+    const char *ver = cJSON_GetStringValue(cJSON_GetObjectItem(root, "version"));
+
+    if (!url || strlen(url) == 0)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing 'url'");
+        cJSON_Delete(root);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "OTA trigger: url=%s version=%s", url, ver ? ver : "?");
+
+    ota_result_t r = ota_start(url, ver, NULL, NULL);
+    cJSON_Delete(root);
+
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddNumberToObject(resp, "result", r);
+    cJSON_AddStringToObject(resp, "state", ota_state_to_string(ota_get_state()));
+    char *resp_str = cJSON_PrintUnformatted(resp);
+    cJSON_Delete(resp);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, resp_str);
+    free(resp_str);
+    return ESP_OK;
+}
+
+/*
     启动服务器
 */
 void http_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 8192;
+    config.max_uri_handlers = 16; /* 从默认 8 提到 16，避免 slot 不够 */
     ESP_ERROR_CHECK(httpd_start(&server, &config));
 
     httpd_uri_t index_uri =
@@ -412,8 +496,22 @@ void http_server_start(void)
             .handler = factory_reset_handler,
             .user_ctx = NULL
 
-        };
+    };
     ESP_ERROR_CHECK(httpd_register_uri_handler(server, &factory_reset_uri));
+
+    httpd_uri_t ota_trigger_uri = {
+        .uri = "/api/ota",
+        .method = HTTP_POST,
+        .handler = ota_trigger_handler,
+        .user_ctx = NULL};
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &ota_trigger_uri));
+
+    httpd_uri_t ota_status_uri = {
+        .uri = "/ota_status",
+        .method = HTTP_GET,
+        .handler = ota_status_handler,
+        .user_ctx = NULL};
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &ota_status_uri));
 
     ESP_LOGI(TAG, "HTTP SERVER START");
 }

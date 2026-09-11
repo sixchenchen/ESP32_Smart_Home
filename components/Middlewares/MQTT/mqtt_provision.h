@@ -20,7 +20,7 @@ typedef enum
 } provision_state_t;
 
 // ==================== 注册配置 ====================
-#define PROV_MAX_RETRY 3          // 最大重试次数
+#define PROV_MAX_RETRY 10          // 最大重试次数
 #define PROV_TIMEOUT_MS 30000     // 等待响应超时时间(ms)
 #define PROV_TASK_STACK_SIZE 4096 // 注册任务栈大小
 #define PROV_TASK_PRIORITY 5      // 注册任务优先级
@@ -37,6 +37,19 @@ esp_err_t mqtt_provision_start(void);
  *        在 MQTT 数据回调中调用
  * @param data 消息数据
  * @param len 数据长度
+ *
+    主题：/provision/device/B4BFE90CDBA0/config/response
+    数据：
+    {
+        "status": "success",
+        "config": {
+            "broker_uri": "mqtt://192.168.124.6:1883",
+            "client_id": "B4BFE90CDBA0",
+            "username": "MQTT1",
+            "password": "123456",
+            "will_topic": "device/B4BFE90CDBA0/will"
+        }
+    }
  */
 void mqtt_provision_handle_response(const uint8_t *data, int len);
 

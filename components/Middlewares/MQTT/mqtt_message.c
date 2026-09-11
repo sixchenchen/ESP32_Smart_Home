@@ -1,12 +1,12 @@
 #include "mqtt_message.h"
+#include "mqtt_config.h"
 #include "json_builder.h"
 #include "device_context.h"
-#include "mqtt_config.h"
+#include "esp_timer.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include "esp_timer.h"
 
 // 获取设备信息
 static const device_context_t *get_device(void)
@@ -240,6 +240,5 @@ char *mqtt_message_create_register_request(void)
     // 注册动作
     json_add_string(root, "action", "register");
     json_add_number(root, "timestamp", esp_timer_get_time() / 1000000);
-
     return json_finish(root);
 }

@@ -1,12 +1,10 @@
-// mqtt_provision.c
+// mqtt_provision.c - MQTT 配网协议
 #include "mqtt_provision.h"
 #include "mqtt_manager.h"
-#include "mqtt_message.h"
+#include "mqtt_config.h"
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
 #include "device_context.h"
-#include "mqtt_topic.h"
-#include "mqtt_config.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "cJSON.h"

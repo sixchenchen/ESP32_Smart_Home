@@ -248,7 +248,7 @@ static void delayed_switch_to_sta_task(void *arg)
 {
     vTaskDelay(pdMS_TO_TICKS(4000));
     int wait_count = 0;
-    while (!mqtt_ready_for_mode_switch && wait_count < 20)
+    while (!mqtt_ready_for_mode_switch && wait_count < 100)
     {
         ESP_LOGI(TAG, "waiting for MQTT ready... (%d/20)", wait_count + 1);
         vTaskDelay(pdMS_TO_TICKS(500));

@@ -107,7 +107,6 @@ static void sensor_data_callback(const sensor_data_t *data, void *ctx)
         ESP_LOGD(TAG, "MQTT not on production broker, data dropped");
         return;
     }
-    ESP_LOGI(TAG, "Received: id=%d, ts=%lu, count=%d", data->sensor_id, data->timestamp_ms, data->count);
     if (!mqtt_manager_is_running())
     {
         ESP_LOGW(TAG, "MQTT not running, data cached in sensor_manager");

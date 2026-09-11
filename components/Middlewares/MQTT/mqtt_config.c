@@ -1,11 +1,10 @@
 #include "mqtt_config.h"
-#include "nvs_utils.h"
 #include "device_context.h"
 #include "mqtt_topic.h"
+#include "nvs_utils.h"
 #include "esp_log.h"
-#include "mqtt_topic.h"
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "mqtt_config";
 

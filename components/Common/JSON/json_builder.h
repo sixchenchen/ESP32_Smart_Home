@@ -2,6 +2,7 @@
 #define JSON_BUILDER_H
 
 #include "cJSON.h"
+#include <stdbool.h>
 
 cJSON *json_create_object(void);
 

@@ -1,6 +1,8 @@
 #ifndef LED_STATUS_H
 #define LED_STATUS_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C"
 {

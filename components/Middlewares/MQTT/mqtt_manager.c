@@ -3,13 +3,19 @@
 #include "esp_log.h"
 #include <string.h>
 #include "mqtt_config.h"
-#include "device_context.h"
 #include "mqtt_topic.h"
 #include "mqtt_message.h"
-#include "wifi_manager.h"
 #include "device_context.h"
+#include "wifi_manager.h"
 
-static const char *TAG = "MQTT";
+static const char *TAG = "mqtt_manager";
+
+/* ─────────────── 模块常量 ─────────────── */
+
+#define MQTT_KEEPALIVE_SEC    15    /* MQTT keepalive 心跳间隔 (秒) */
+#define MQTT_CONN_TIMEOUT_MS  5000  /* MQTT 连接超时 (ms) */
+#define MQTT_PUBLISH_RETRY    3     /* publish 重试次数 */
+#define MQTT_PUBLISH_DELAY_MS 20    /* publish 重试间隔 (ms) */
 
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 static mqtt_rx_callback_t rx_callback = NULL;
@@ -68,7 +74,21 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, " MQTT 连接成功");
         wifi_manager_set_mqtt_ready(true);
         mqtt_set_state(MQTT_STATE_RUNNING);
-        mqtt_manager_subscribe(mqtt_topic_control(), 1);
+
+        if (s_is_provisioned)
+        {
+            // ===== 正式运行阶段：订阅所有业务 topic =====
+            mqtt_manager_subscribe(mqtt_topic_control(), 1);
+            esp_err_t r = mqtt_manager_subscribe(mqtt_topic_ota(), 1);
+            ESP_LOGI(TAG, "subscribe ota topic: %s → %s",
+                     mqtt_topic_ota(), r == ESP_OK ? "OK" : "FAIL");
+        }
+        else
+        {
+            // ===== Provisioning 阶段：只订阅注册响应 =====
+            ESP_LOGI(TAG, "Not provisioned, subscribe provision config only");
+        }
+        // provision config response 始终订阅（正式阶段也可能收到 config 更新）
         mqtt_manager_subscribe(mqtt_topic_provision_config(), 1);
         break;
 
@@ -109,6 +129,11 @@ esp_err_t mqtt_manager_init(void)
         return ESP_OK;
     }
 
+    // 静默 ESP-IDF 原生 mqtt_client 的瞬时 ERROR 日志
+    // （OTA/下载时抢 WiFi 会触发 "Publish message cannot be created"，
+    //  这是瞬时资源紧张，重试能自动恢复，不值得打 ERROR）
+    esp_log_level_set("mqtt_client", ESP_LOG_NONE);
+
     // 从 NVS 加载配置
     mqtt_config_t config;
     mqtt_config_load(&config);
@@ -140,10 +165,10 @@ esp_err_t mqtt_manager_init(void)
                             .qos = WILL_QOS,
                             .retain = WILL_RETAIN,
                         },
-                    .keepalive = 15,
+                    .keepalive = MQTT_KEEPALIVE_SEC,
                 },
             .network = {
-                .timeout_ms = 5000,
+                .timeout_ms = MQTT_CONN_TIMEOUT_MS,
                 .disable_auto_reconnect = false,
             }
 
@@ -304,30 +329,49 @@ esp_err_t mqtt_manager_publish(const char *topic, const char *data, int len, int
     }
     if (mqtt_client == NULL)
     {
-        ESP_LOGW(TAG, "MQTT 客户端为空");
+        ESP_LOGD(TAG, "MQTT 客户端为空");
         return ESP_FAIL;
     }
     if (mqtt_state != MQTT_STATE_RUNNING)
     {
-        ESP_LOGW(TAG, "MQTT 未运行 (状态: %s)", state_to_string(mqtt_state));
+        ESP_LOGD(TAG, "MQTT 未运行 (状态: %s)", state_to_string(mqtt_state));
         return ESP_FAIL;
     }
-    int msg_id = esp_mqtt_client_publish(mqtt_client, topic, data, len, qos, retain);
+
+    // 带重试的 publish：瞬时资源紧张（如 OTA 启动抢 WiFi）时重试
+    int msg_id = -1;
+    for (int attempt = 0; attempt < MQTT_PUBLISH_RETRY; attempt++)
+    {
+        msg_id = esp_mqtt_client_publish(mqtt_client, topic, data, len, qos, retain);
+        if (msg_id >= 0) break;
+        if (attempt < MQTT_PUBLISH_RETRY - 1)
+            vTaskDelay(pdMS_TO_TICKS(MQTT_PUBLISH_DELAY_MS));
+    }
+
     if (msg_id < 0)
     {
-        ESP_LOGE(TAG, "发布失败: %d", msg_id);
+        // 静默失败：publish 经常是瞬时资源紧张（OTA/下载时）造成的，
+        // 不需要打 ERROR/WARN 级别的日志打扰用户
         return ESP_FAIL;
     }
-    ESP_LOGI(TAG, "发布 id=%d", msg_id);
+    ESP_LOGI(TAG, "发布 id=%d topic=%s", msg_id, topic);
     return ESP_OK;
 }
 
 esp_err_t mqtt_manager_subscribe(const char *topic, int qos)
 {
-    if (mqtt_client == NULL)
+    if (mqtt_client == NULL) {
+        ESP_LOGE(TAG, "subscribe FAIL: client is NULL, topic=%s", topic);
         return ESP_FAIL;
+    }
     int id = esp_mqtt_client_subscribe(mqtt_client, topic, qos);
-    return id >= 0 ? ESP_OK : ESP_FAIL;
+    if (id >= 0) {
+        ESP_LOGI(TAG, "subscribe OK: topic=%s qos=%d mid=%d", topic, qos, id);
+        return ESP_OK;
+    } else {
+        ESP_LOGE(TAG, "subscribe FAIL: topic=%s qos=%d ret=%d (see ESP_ERR_MQTT_*)", topic, qos, id);
+        return ESP_FAIL;
+    }
 }
 
 bool mqtt_manager_is_production(void)

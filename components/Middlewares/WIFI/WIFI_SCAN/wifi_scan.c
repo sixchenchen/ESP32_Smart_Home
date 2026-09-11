@@ -4,7 +4,6 @@
 #include "wifi_mode.h"
 
 static const char *TAG = "wifi_scan";
-wifi_mode_t mode;
 
 esp_err_t wifi_scan_start(wifi_scan_result_t *result, uint16_t max_num, uint16_t *count)
 {
@@ -28,7 +27,7 @@ esp_err_t wifi_scan_start(wifi_scan_result_t *result, uint16_t max_num, uint16_t
     {
         ESP_LOGE(TAG, "扫描启动失败: %d", ret);
         return ret;
-    };
+    }
     uint16_t ap_num = 0;
     ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_num));
     if (ap_num > max_num)
