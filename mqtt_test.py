@@ -4,7 +4,7 @@
 ESP32 Smart Home - MQTT 功能测试脚本
 
 覆盖场景：
-  1. MOS 单路控制 / 全部控制 / 状态查询
+  1. mos 单路控制 / 全部控制 / 状态查询
   2. OTA 升级触发
   3. 传感器数据接收监听
   4. 心跳 / 事件 / 遗嘱 监听
@@ -50,7 +50,7 @@ PROVISION_PORT = 1884
 TPL_CONTROL = "device/{dev}/control"
 TPL_STATUS = "device/{dev}/status"
 TPL_EVENT = "device/{dev}/event"
-TPL_MOS_STATE = "device/{dev}/mos_state"
+TPL_mos_STATE = "device/{dev}/mos_state"
 TPL_HEART = "device/{dev}/heart"
 TPL_SENSOR = "device/{dev}/sensor"
 TPL_OTA = "device/{dev}/ota"
@@ -131,26 +131,26 @@ class DeviceClient:
 # ==================== 命令实现 ====================
 
 def cmd_mos_single(client, channel, state):
-    """单路 MOS 控制"""
-    print(f"\n=== MOS 单路控制: channel={channel} state={state} ===")
+    """单路 mos 控制"""
+    print(f"\n=== mos 单路控制: channel={channel} state={state} ===")
     # 先订阅事件和状态，看设备回复
-    client.sub(topic(TPL_EVENT), topic(TPL_MOS_STATE))
+    client.sub(topic(TPL_EVENT), topic(TPL_mos_STATE))
     client.pub(TPL_CONTROL, {"cmd": "mos", "channel": channel, "state": state})
     time.sleep(1.5)
 
 
 def cmd_mos_all(client, state):
-    """全部 MOS 控制"""
-    print(f"\n=== MOS 全部控制: state={state} ===")
-    client.sub(topic(TPL_EVENT), topic(TPL_MOS_STATE))
+    """全部 mos 控制"""
+    print(f"\n=== mos 全部控制: state={state} ===")
+    client.sub(topic(TPL_EVENT), topic(TPL_mos_STATE))
     client.pub(TPL_CONTROL, {"cmd": "mos_all", "state": state})
     time.sleep(1.5)
 
 
 def cmd_mos_query(client):
-    """查询当前 MOS 状态"""
-    print("\n=== MOS 状态查询 ===")
-    client.sub(topic(TPL_MOS_STATE))
+    """查询当前 mos 状态"""
+    print("\n=== mos 状态查询 ===")
+    client.sub(topic(TPL_mos_STATE))
     client.pub(TPL_CONTROL, {"cmd": "mos_query"})
     time.sleep(1.5)
 
@@ -170,7 +170,7 @@ def cmd_listen(client, duration=15):
     client.sub(
         topic(TPL_STATUS),
         topic(TPL_EVENT),
-        topic(TPL_MOS_STATE),
+        topic(TPL_mos_STATE),
         topic(TPL_HEART),
         topic(TPL_SENSOR),
         topic(TPL_WILL),
@@ -245,10 +245,10 @@ def interactive_menu():
 ║  设备: {DEVICE_ID}                          ║
 ║  Broker: {BROKER_HOST}:{BROKER_PORT}                    ║
 ╠══════════════════════════════════════════╣
-║  1. MOS 单路控制                           ║
-║  2. MOS 全部开                              ║
-║  3. MOS 全部关                              ║
-║  4. MOS 状态查询                            ║
+║  1. mos 单路控制                           ║
+║  2. mos 全部开                              ║
+║  3. mos 全部关                              ║
+║  4. mos 状态查询                            ║
 ║  5. OTA 升级触发                            ║
 ║  6. 监听所有 topic (15s)                    ║
 ║  7. 模拟注册服务器 (broker 1884)            ║
@@ -320,11 +320,11 @@ def main():
 
     # 直接执行模式
     parser.add_argument("--mos", nargs=2, metavar=("CHANNEL", "STATE"),
-                        help="MOS 单路控制: channel state")
+                        help="mos 单路控制: channel state")
     parser.add_argument("--mos-all", type=int, metavar="STATE",
-                        help="MOS 全部控制: 0 或 1")
+                        help="mos 全部控制: 0 或 1")
     parser.add_argument("--mos-query", action="store_true",
-                        help="查询 MOS 状态")
+                        help="查询 mos 状态")
     parser.add_argument("--ota", nargs=2, metavar=("VERSION", "URL"),
                         help="OTA 升级: version url")
     parser.add_argument("--listen", type=int, nargs="?", const=15, metavar="SECONDS",

@@ -109,13 +109,8 @@ esp_err_t key_init(void)
 
     ESP_ERROR_CHECK(gpio_config(&io_conf));
     ESP_ERROR_CHECK(gpio_install_isr_service(0));
-    ESP_ERROR_CHECK(gpio_isr_handler_add(
-        BOOT_INT_GPIO_PIN,
-        key_isr_handler,
-        (void *)BOOT_INT_GPIO_PIN));
-
+    ESP_ERROR_CHECK(gpio_isr_handler_add(BOOT_INT_GPIO_PIN, key_isr_handler, (void *)BOOT_INT_GPIO_PIN));
     xTaskCreate(key_task, "key_task", 4096, NULL, 5, NULL);
-
     ESP_LOGI(TAG, "key init success");
     return ESP_OK;
 }

@@ -195,7 +195,7 @@ static void wifi_manager_handle_connected(void)
     memset(g_connecting_ssid, 0, sizeof(g_connecting_ssid));
     memset(g_connecting_password, 0, sizeof(g_connecting_password));
     mqtt_ready_for_mode_switch = false;
-    //  MQTT启动
+    // MQTT启动
     mqtt_service_init();
     if (mqtt_config_is_provisioned())
     {

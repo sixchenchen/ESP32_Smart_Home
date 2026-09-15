@@ -6,7 +6,7 @@
 #include "uart_drv.h"
 #include <string.h>
 
-static const char *TAG = "SEN_PROTOCOL";
+static const char *TAG = "SEN_protocol";
 
 static SemaphoreHandle_t s_protocol_mutex = NULL;
 static sen_protocol_event_callback_t s_event_callback = NULL;

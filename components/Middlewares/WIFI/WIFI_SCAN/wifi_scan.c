@@ -13,12 +13,10 @@ esp_err_t wifi_scan_start(wifi_scan_result_t *result, uint16_t max_num, uint16_t
     }
     wifi_mode_t current_mode;
     esp_wifi_get_mode(&current_mode);
-    bool need_switch = false;
     if (current_mode == WIFI_MODE_AP)
     {
         // 不能直接用 AP 模式扫描，需要先切换到 STA
         wifi_mode_config_start();
-        need_switch = true;
         vTaskDelay(pdMS_TO_TICKS(100)); // 等待模式切换
     }
     // 开始扫描, false:非阻塞扫描

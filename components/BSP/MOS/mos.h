@@ -1,80 +1,80 @@
-#ifndef __MOS_H
-#define __MOS_H
+#ifndef __mos_H
+#define __mos_H
 
 #include <stdint.h>
 #include "driver/gpio.h"
 
 /*
-    ESP32 MOS GPIO定义
-    MOS0 -> GPIO13
-    MOS1 -> GPIO12
-    MOS2 -> GPIO14
-    MOS3 -> GPIO27
-    MOS4 -> GPIO26
-    MOS5 -> GPIO25
-    MOS6 -> GPIO33
-    MOS7 -> GPIO32
+    ESP32 mos GPIO定义
+    mos0 -> GPIO13
+    mos1 -> GPIO12
+    mos2 -> GPIO14
+    mos3 -> GPIO27
+    mos4 -> GPIO26
+    mos5 -> GPIO25
+    mos6 -> GPIO33
+    mos7 -> GPIO32
 */
-#define MOS_CHANNEL_NUM 8
-#define MOS0_GPIO GPIO_NUM_13
-#define MOS1_GPIO GPIO_NUM_12
-#define MOS2_GPIO GPIO_NUM_14
-#define MOS3_GPIO GPIO_NUM_27
-#define MOS4_GPIO GPIO_NUM_26
-#define MOS5_GPIO GPIO_NUM_25
-#define MOS6_GPIO GPIO_NUM_33
-#define MOS7_GPIO GPIO_NUM_32
+#define mos_CHANNEL_NUM 8
+#define mos0_GPIO GPIO_NUM_13
+#define mos1_GPIO GPIO_NUM_12
+#define mos2_GPIO GPIO_NUM_14
+#define mos3_GPIO GPIO_NUM_27
+#define mos4_GPIO GPIO_NUM_26
+#define mos5_GPIO GPIO_NUM_25
+#define mos6_GPIO GPIO_NUM_33
+#define mos7_GPIO GPIO_NUM_32
 
 typedef enum
 {
-    MOS_OFF = 0,
-    MOS_ON = 1
-} MOS_State;
+    mos_OFF = 0,
+    mos_ON = 1
+} mos_State;
 
 typedef enum
 {
-    MOS_ALL_OFF = 0x00,
-    MOS_ALL_ON = 0xFF,
-} MOS_AllState;
+    mos_ALL_OFF = 0x00,
+    mos_ALL_ON = 0xFF,
+} mos_AllState;
 
 /*
-    MOS初始化
+    mos初始化
 */
-void MOS_Init(void);
+void mos_Init(void);
 
 /*
-    单路MOS控制
+    单路mos控制
     channel: 0~7
-    state:   MOS_ON / MOS_OFF
+    state:   mos_ON / mos_OFF
 */
-uint8_t MOS_Control(uint8_t channel, MOS_State state);
+uint8_t mos_Control(uint8_t channel, mos_State state);
 
 /*
-    全部MOS控制
+    全部mos控制
     state:
-        MOS_ON
-        MOS_OFF
+        mos_ON
+        mos_OFF
 */
-uint8_t MOS_All_Control(MOS_State state);
+uint8_t mos_All_Control(mos_State state);
 
 /*
-    获取单路MOS状态
+    获取单路mos状态
     返回：
-        MOS_OFF
-        MOS_ON
+        mos_OFF
+        mos_ON
 */
-MOS_State MOS_Get_State(uint8_t channel);
+mos_State mos_Get_State(uint8_t channel);
 /*
-    获取全部MOS状态
-    bit0 -> MOS0
-    bit1 -> MOS1
+    获取全部mos状态
+    bit0 -> mos0
+    bit1 -> mos1
     ...
-    bit7 -> MOS7
+    bit7 -> mos7
 
     例如：
     00001111
-    表示 MOS0~MOS3 ON
+    表示 mos0~mos3 ON
 */
-uint8_t MOS_Get_All(void);
+uint8_t mos_Get_All(void);
 
 #endif

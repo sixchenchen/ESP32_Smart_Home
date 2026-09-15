@@ -3,7 +3,7 @@
 #include "uart_drv.h"
 #include "esp_log.h"
 
-static const char *TAG = "MOS_PROTOCOL";
+static const char *TAG = "mos_protocol";
 
 //   状态机枚举
 typedef enum
@@ -14,21 +14,21 @@ typedef enum
     WAIT_LEN,
     WAIT_DATA,
     WAIT_CRC,
-} MOS_RX_STATE;
+} mos_RX_STATE;
 
 //   静态变量
-static MOS_RX_STATE state = WAIT_HEAD;
-static uint8_t frame[4 + MOS_MAX_DATA_LEN];
+static mos_RX_STATE state = WAIT_HEAD;
+static uint8_t frame[4 + mos_MAX_DATA_LEN];
 static uint8_t frame_index = 0;
 static uint8_t data_len = 0;
 
 //   静态函数声明
-static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len);
-static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len);
-static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len);
+static uint8_t mos_Calc_CRC(const uint8_t *buf, uint16_t len);
+static void mos_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len);
+static void mos_protocol_Handle(const uint8_t *buf, uint8_t frame_len);
 
 //   CRC计算
-static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len)
+static uint8_t mos_Calc_CRC(const uint8_t *buf, uint16_t len)
 {
     uint8_t crc = 0;
     for (uint16_t i = 0; i < len; i++)
@@ -39,15 +39,15 @@ static uint8_t MOS_Calc_CRC(const uint8_t *buf, uint16_t len)
 }
 
 //   发送回复
-static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len)
+static void mos_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len)
 {
     uint8_t tx[16];
     uint8_t index = 0;
 
     // HEAD
-    tx[index++] = MOS_FRAME_HEAD;
+    tx[index++] = mos_FRAME_HEAD;
     // ADDRESS
-    tx[index++] = MOS_DEVICE_ADDR;
+    tx[index++] = mos_DEVICE_ADDR;
     // CMD
     tx[index++] = cmd;
     // LEN
@@ -58,13 +58,13 @@ static void MOS_Send_Reply(uint8_t cmd, const uint8_t *data, uint8_t len)
         tx[index++] = data[i];
     }
     // CRC计算（ADDRESS + CMD + LEN + DATA）
-    tx[index] = MOS_Calc_CRC(&tx[1], index - 1);
+    tx[index] = mos_Calc_CRC(&tx[1], index - 1);
     index++;
     uart_drv_send(tx, index);
 }
 
 //   执行完整协议帧
-static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
+static void mos_protocol_Handle(const uint8_t *buf, uint8_t frame_len)
 {
     uint8_t addr, cmd, len;
     ESP_LOGI(TAG, "Handle: len=%d, cmd=0x%02X", frame_len, buf[2]);
@@ -76,7 +76,7 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
     }
 
     // HEAD检查
-    if (buf[0] != MOS_FRAME_HEAD)
+    if (buf[0] != mos_FRAME_HEAD)
     {
         ESP_LOGW(TAG, "帧头错误: 0x%02X", buf[0]);
         return;
@@ -84,7 +84,7 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
 
     // ADDRESS检查
     addr = buf[1];
-    if (addr != MOS_DEVICE_ADDR)
+    if (addr != mos_DEVICE_ADDR)
     {
         ESP_LOGW(TAG, "地址错误: 0x%02X", addr);
         return;
@@ -94,7 +94,7 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
     cmd = buf[2];
     len = buf[3];
 
-    if (len > MOS_MAX_DATA_LEN)
+    if (len > mos_MAX_DATA_LEN)
     {
         ESP_LOGW(TAG, "数据长度超限: %d", len);
         return;
@@ -110,8 +110,8 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
     switch (cmd)
     {
 
-    //   单路MOS控制
-    case CMD_MOS_CONTROL:
+    //   单路mos控制
+    case CMD_mos_CONTROL:
     {
         if (len != 2)
         {
@@ -121,24 +121,24 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
         uint8_t channel = buf[4];
         uint8_t mos_state = buf[5];
 
-        if (channel >= MOS_CHANNEL_NUM)
+        if (channel >= mos_CHANNEL_NUM)
         {
             ESP_LOGE(TAG, "通道越界: %d", channel);
             return;
         }
-        if (mos_state != MOS_OFF && mos_state != MOS_ON)
+        if (mos_state != mos_OFF && mos_state != mos_ON)
         {
             ESP_LOGE(TAG, "状态错误: %d", mos_state);
             return;
         }
 
         ESP_LOGI(TAG, "单路控制: CH%d -> %s", channel, mos_state ? "ON" : "OFF");
-        MOS_Control(channel, (MOS_State)mos_state);
+        mos_Control(channel, (mos_State)mos_state);
         break;
     }
 
-    //   全部MOS控制
-    case CMD_MOS_ALL_CONTROL:
+    //   全部mos控制
+    case CMD_mos_ALL_CONTROL:
     {
         if (len != 1)
         {
@@ -146,18 +146,18 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
             return;
         }
         uint8_t mos_state = buf[4];
-        if (mos_state != MOS_OFF && mos_state != MOS_ON)
+        if (mos_state != mos_OFF && mos_state != mos_ON)
         {
             ESP_LOGE(TAG, "状态错误: %d", mos_state);
             return;
         }
         ESP_LOGI(TAG, "全部控制: %s", mos_state ? "ON" : "OFF");
-        MOS_All_Control((MOS_State)mos_state);
+        mos_All_Control((mos_State)mos_state);
         break;
     }
 
     //   8路控制多个设置
-    case CMD_MOS_STATE_SET:
+    case CMD_mos_STATE_SET:
     {
         if (len != 1)
         {
@@ -166,23 +166,23 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
         }
         uint8_t new_state = buf[4];
         ESP_LOGI(TAG, "状态设置: 0x%02X", new_state);
-        for (uint8_t i = 0; i < MOS_CHANNEL_NUM; i++)
+        for (uint8_t i = 0; i < mos_CHANNEL_NUM; i++)
         {
-            MOS_Control(i, (new_state & (1U << i)) ? MOS_ON : MOS_OFF);
+            mos_Control(i, (new_state & (1U << i)) ? mos_ON : mos_OFF);
         }
         break;
     }
 
-    //   查询MOS状态
-    case CMD_MOS_GET:
+    //   查询mos状态
+    case CMD_mos_GET:
     {
         if (len != 0)
         {
             ESP_LOGW(TAG, "查询命令不应带数据: %d", len);
             return;
         }
-        uint8_t mos_state = MOS_Get_All();
-        MOS_Send_Reply(CMD_MOS_REPLY, &mos_state, 1);
+        uint8_t mos_state = mos_Get_All();
+        mos_Send_Reply(CMD_mos_REPLY, &mos_state, 1);
         break;
     }
 
@@ -194,26 +194,26 @@ static void MOS_Protocol_Handle(const uint8_t *buf, uint8_t frame_len)
 }
 
 // 协议初始化
-void MOS_Protocol_Init(void)
+void mos_protocol_Init(void)
 {
     // 注册UART接收回调
-    uart_drv_register_mos_byte_callback(MOS_Protocol_RxByte);
+    uart_drv_register_mos_byte_callback(mos_protocol_RxByte);
     // 初始化状态机
     state = WAIT_HEAD;
     frame_index = 0;
     data_len = 0;
-    ESP_LOGI(TAG, "MOS Protocol initialized");
+    ESP_LOGI(TAG, "mos protocol initialized");
 }
 
 //  逐字节接收
-void MOS_Protocol_RxByte(uint8_t ch)
+void mos_protocol_RxByte(uint8_t ch)
 {
     switch (state)
     {
 
     // 等待帧头
     case WAIT_HEAD:
-        if (ch == MOS_FRAME_HEAD)
+        if (ch == mos_FRAME_HEAD)
         {
             frame[0] = ch;
             frame_index = 1;
@@ -239,7 +239,7 @@ void MOS_Protocol_RxByte(uint8_t ch)
         frame[frame_index++] = ch;
         data_len = ch;
 
-        if (data_len > MOS_MAX_DATA_LEN)
+        if (data_len > mos_MAX_DATA_LEN)
         {
             // 非法长度，丢弃当前帧
             ESP_LOGW(TAG, "非法数据长度: %d", data_len);
@@ -273,11 +273,11 @@ void MOS_Protocol_RxByte(uint8_t ch)
     case WAIT_CRC:
     {
         // 计算CRC（ADDRESS + CMD + LEN + DATA）
-        uint8_t crc = MOS_Calc_CRC(&frame[1], frame_index - 1);
+        uint8_t crc = mos_Calc_CRC(&frame[1], frame_index - 1);
         if (crc == ch)
         {
             // CRC正确，执行完整帧
-            MOS_Protocol_Handle(frame, frame_index);
+            mos_protocol_Handle(frame, frame_index);
         }
         else
         {
@@ -301,10 +301,10 @@ void MOS_Protocol_RxByte(uint8_t ch)
 }
 
 //   批量接收
-void MOS_Protocol_RxBytes(const uint8_t *data, uint16_t len)
+void mos_protocol_RxBytes(const uint8_t *data, uint16_t len)
 {
     for (uint16_t i = 0; i < len; i++)
     {
-        MOS_Protocol_RxByte(data[i]);
+        mos_protocol_RxByte(data[i]);
     }
 }

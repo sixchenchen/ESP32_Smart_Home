@@ -22,7 +22,7 @@ void app_main(void)
 {
     led_init();
     key_manager_start();
-    MOS_Init();
+    mos_Init();
     device_context_init();
     nvs_flash_init();
     ota_post_init();
@@ -30,7 +30,7 @@ void app_main(void)
     wifi_manager_start();
     led_status_start();
     uart_drv_init();
-    MOS_Protocol_Init();
+    mos_protocol_Init();
     sen_protocol_init();
     sensor_manager_init();
     sensor_mqtt_bridge_init();

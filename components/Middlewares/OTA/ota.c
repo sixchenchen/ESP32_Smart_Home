@@ -31,14 +31,14 @@ static const char *TAG = "ota";
 
 /* ─────────────── 模块常量 ─────────────── */
 
-#define OTA_URL_MAX_LEN     256     /* 固件 URL 最大长度 */
-#define OTA_VER_MAX_LEN     32      /* 版本号最大长度 */
-#define OTA_HTTP_TIMEOUT_MS 10000   /* HTTP 连接/读取超时 */
-#define OTA_TASK_STACK      8192    /* OTA 任务栈大小 */
-#define OTA_TASK_PRIORITY   5       /* OTA 任务优先级 */
-#define OTA_PERFORM_DELAY   5       /* perform 循环间 delay (ms) */
-#define OTA_RESTART_DELAY   1000    /* 升级成功后延迟重启 (ms) */
-#define OTA_FAIL_DELAY      100     /* 失败后清理延迟 (ms) */
+#define OTA_URL_MAX_LEN 256       /* 固件 URL 最大长度 */
+#define OTA_VER_MAX_LEN 32        /* 版本号最大长度 */
+#define OTA_HTTP_TIMEOUT_MS 10000 /* HTTP 连接/读取超时 */
+#define OTA_TASK_STACK 8192       /* OTA 任务栈大小 */
+#define OTA_TASK_PRIORITY 5       /* OTA 任务优先级 */
+#define OTA_PERFORM_DELAY 5       /* perform 循环间 delay (ms) */
+#define OTA_RESTART_DELAY 1000    /* 升级成功后延迟重启 (ms) */
+#define OTA_FAIL_DELAY 100        /* 失败后清理延迟 (ms) */
 
 /* ─────────────── 内部状态 ─────────────── */
 
@@ -137,8 +137,7 @@ static int ota_version_compare(const char *v1, const char *v2)
     return c1 - c2;
 }
 
-/* ─────────────── 初始化：新固件启动后 mark valid ─────────────── */
-
+// 初始化：新固件启动后 mark valid
 esp_err_t ota_post_init(void)
 {
     /* 延迟创建 mutex，因为这里是在 app_main 最早期被调用的 */
@@ -151,12 +150,8 @@ esp_err_t ota_post_init(void)
             return ESP_FAIL;
         }
     }
-
     const esp_app_desc_t *desc = esp_app_get_description();
-    ESP_LOGI(TAG, "current fw: name=%s version=%s",
-             desc ? desc->project_name : "?",
-             desc ? desc->version : "?");
-
+    ESP_LOGI(TAG, "current fw: name=%s version=%s", desc ? desc->project_name : "?", desc ? desc->version : "?");
     /*
      * 检查 bootloader 标记的升级状态
      * 只有从 OTA 分区（ota_0 / ota_1）启动的固件才需要 mark valid

@@ -1,5 +1,5 @@
-#ifndef SEN_PROTOCOL_H
-#define SEN_PROTOCOL_H
+#ifndef SEN_protocol_H
+#define SEN_protocol_H
 
 #include "esp_err.h"
 #include "sen_frame.h"

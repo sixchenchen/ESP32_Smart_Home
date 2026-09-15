@@ -1,6 +1,6 @@
 # ESP32
 
-基于 ESP-IDF v6.0.2 的设备固件，实现 WiFi 联网、MQTT 双阶段注册、8 路 MOS 管控制、UART 传感器数据采集与 OTA 远程升级。
+基于 ESP-IDF v6.0.2 的设备固件，实现 WiFi 联网、MQTT 双阶段注册、8 路 mos 管控制、UART 传感器数据采集与 OTA 远程升级。
 
 ## 硬件规格
 
@@ -9,7 +9,7 @@
 | MCU | ESP32 |
 | Flash | 4MB |
 | 无线 | WiFi 802.11 b/g/n |
-| 输出 | 8 路 MOS 管 |
+| 输出 | 8 路 mos 管 |
 | 接口 | UART（传感器）、GPIO（按键、LED） |
 
 ## 开发环境
@@ -41,11 +41,11 @@ ESP32_Smart_Home/
 │   │   ├── Device/                 # 设备上下文（MAC 地址、唯一标识）
 │   │   ├── KEY/                    # 按键驱动（短按/长按检测）
 │   │   ├── LED/                    # LED 状态指示驱动
-│   │   ├── MOS/                    # 8 路 MOS 管控制
+│   │   ├── mos/                    # 8 路 mos 管控制
 │   │   └── UART/                   # UART 驱动（与传感器通信）
-│   ├── Protocol/                   # 通信协议层
-│   │   ├── MOS_Protocol/           # MOS 控制协议（命令帧解析）
-│   │   └── SEN_Protocol/           # 传感器协议（帧结构 + CRC + 数据解析）
+│   ├── protocol/                   # 通信协议层
+│   │   ├── mos_protocol/           # mos 控制协议（命令帧解析）
+│   │   └── SEN_protocol/           # 传感器协议（帧结构 + CRC + 数据解析）
 │   ├── Middlewares/                # 中间件层
 │   │   ├── HTTP_SERVER/            # HTTP 服务器
 │   │   │   ├── http_server.c       # Web 配置页面 + OTA API
@@ -67,7 +67,7 @@ ESP32_Smart_Home/
 │   │       ├── WIFI_SCAN/          # WiFi 扫描
 │   │       └── WIFI_CONFIG/        # WiFi 凭据持久化（NVS）
 │   ├── Application/                # 应用层（业务逻辑）
-│   │   ├── KEY_MANAGER/            # 按键事件 → LED/MOS/重置逻辑
+│   │   ├── KEY_MANAGER/            # 按键事件 → LED/mos/重置逻辑
 │   │   ├── LED_STATUS/             # LED 状态机（连网/注册/OTA 状态指示）
 │   │   ├── SENSOR_MANAGER/         # 传感器数据采集 + 环形缓冲
 │   │   └── SENSOR_MQTT_BRIDGE/     # 传感器数据 → MQTT 批量上报
@@ -163,7 +163,7 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 
 | 方向 | Topic | 说明 |
 |------|-------|------|
-| 设备订阅 | `device/{mac}/control` | MOS 控制命令 |
+| 设备订阅 | `device/{mac}/control` | mos 控制命令 |
 | 设备订阅 | `device/{mac}/ota` | OTA 升级命令 |
 | 设备订阅 | `/provision/device/{mac}/config/response` | 配置更新 |
 | 设备发布 | `device/{mac}/event` | 事件上报（状态/错误） |
@@ -171,7 +171,7 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | 设备发布 | `device/{mac}/sensor` | 传感器数据 |
 | 设备发布 | `/provision/device/{mac}/register` | 注册请求 |
 
-### 4. MOS 管控制
+### 4. mos 管控制
 
 - 8 路独立控制，支持单路开关和全部开关
 - MQTT 命令格式：`{"channel":1,"state":1}`
@@ -285,10 +285,10 @@ python mqtt_test.py
 ║  设备: B4BFE90CDBA0                        ║
 ║  Broker: 192.168.124.6:1883                ║
 ╠══════════════════════════════════════════╣
-║  1. MOS 单路控制                           ║
-║  2. MOS 全部开                              ║
-║  3. MOS 全部关                              ║
-║  4. MOS 状态查询                            ║
+║  1. mos 单路控制                           ║
+║  2. mos 全部开                              ║
+║  3. mos 全部关                              ║
+║  4. mos 状态查询                            ║
 ║  5. OTA 升级触发                            ║
 ║  6. 监听所有 topic (15s)                    ║
 ║  7. 模拟注册服务器 (broker 1884)            ║
@@ -299,14 +299,14 @@ python mqtt_test.py
 ### 命令行直执模式
 
 ```bash
-# MOS 单路控制：通道 1 开
+# mos 单路控制：通道 1 开
 python mqtt_test.py --mos 1 1
 
-# MOS 全部开 / 关
+# mos 全部开 / 关
 python mqtt_test.py --mos-all 1
 python mqtt_test.py --mos-all 0
 
-# 查询 MOS 状态
+# 查询 mos 状态
 python mqtt_test.py --mos-query
 
 # OTA 升级
@@ -325,7 +325,7 @@ python mqtt_test.py --dev A1B2C3D4E5F6 --host 10.0.0.5 --port 1883
 
 ### 手动测试（MQTTX / 其他工具）
 
-#### MOS 控制
+#### mos 控制
 
 ```
 # 单路开
@@ -354,7 +354,7 @@ Payload: {"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30
 | Topic | 触发时机 | 内容示例 |
 |-------|----------|----------|
 | `device/{id}/status` | MQTT 连接成功 / LWT | `{"type":"state","data":{"state":"online"}}` |
-| `device/{id}/event` | MOS 变化 / 错误 | `{"type":"event","data":{"event":"mos_change","channel":1,"state":1}}` |
+| `device/{id}/event` | mos 变化 / 错误 | `{"type":"event","data":{"event":"mos_change","channel":1,"state":1}}` |
 | `device/{id}/event` | 错误响应 | `{"type":"error","data":{"code":2003,"message":"ota missing url field"}}` |
 | `device/{id}/mos_state` | 查询 / 变化后 | `{"type":"state","data":{"mos0":1,"mos1":0,...}}` |
 | `device/{id}/heart` | 每 30 秒 | `{"type":"heartbeat","data":{"uptime":1234}}` |

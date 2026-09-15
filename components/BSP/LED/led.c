@@ -170,7 +170,6 @@ void led_init(void)
     ESP_ERROR_CHECK(gpio_config(&gpio_cfg));
     // 默认熄灭
     LED_OFF();
-
     // 创建消息队列
     s_led_queue = xQueueCreate(5, sizeof(led_cmd_t));
     if (s_led_queue == NULL)

@@ -2,7 +2,7 @@ set(src_dirs
 "LED"
 "KEY"
 "UART"
-"MOS"
+"mos"
 "Device"
 )
 
@@ -11,7 +11,7 @@ set(include_dirs
 "LED"
 "KEY"
 "UART"
-"MOS"
+"mos"
 "Device"
 )
 

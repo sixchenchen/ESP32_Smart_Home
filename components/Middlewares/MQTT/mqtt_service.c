@@ -37,7 +37,6 @@ static void mqtt_publish_error(int error_code, const char *error_msg);
 */
 static void mqtt_publish_status(bool online)
 {
-    const char *reason = online ? NULL : REASON_MQTT_LWT;
     char *msg = mqtt_message_create_online();
     mqtt_manager_publish(mqtt_topic_status(), msg, strlen(msg), 1, true);
     free(msg);
@@ -77,15 +76,15 @@ static void mqtt_handle_control_message(const uint8_t *data, int len)
     const char *cmd_str = cmd->valuestring;
 
     // 根据命令分发到具体处理函数
-    if (strcmp(cmd_str, CMD_MOS_SINGLE) == 0)
+    if (strcmp(cmd_str, CMD_mos_SINGLE) == 0)
     {
         mqtt_handle_mos_control(root);
     }
-    else if (strcmp(cmd_str, CMD_MOS_ALL) == 0)
+    else if (strcmp(cmd_str, CMD_mos_ALL) == 0)
     {
         mqtt_handle_mos_all_control(root);
     }
-    else if (strcmp(cmd_str, CMD_MOS_QUERY) == 0)
+    else if (strcmp(cmd_str, CMD_mos_QUERY) == 0)
     {
         mqtt_publish_mos_state();
     }
@@ -333,15 +332,15 @@ static void mqtt_handle_mos_control(cJSON *root)
     uint8_t ch = (uint8_t)channel->valueint;
     uint8_t st = (uint8_t)state->valueint;
 
-    if (ch >= MOS_CHANNEL_NUM)
+    if (ch >= mos_CHANNEL_NUM)
     {
         ESP_LOGE(TAG, "通道越界: %d", ch);
         mqtt_publish_error(1006, "Channel boundary crossing");
         return;
     }
-    if (MOS_Control(ch, st ? MOS_ON : MOS_OFF))
+    if (mos_Control(ch, st ? mos_ON : mos_OFF))
     {
-        mqtt_publish_mos_event(ch, MOS_Get_State(ch));
+        mqtt_publish_mos_event(ch, mos_Get_State(ch));
     }
     else
     {
@@ -350,7 +349,7 @@ static void mqtt_handle_mos_control(cJSON *root)
 }
 
 /*
-    全部 MOS 控制
+    全部 mos 控制
 */
 static void mqtt_handle_mos_all_control(cJSON *root)
 {
@@ -361,7 +360,7 @@ static void mqtt_handle_mos_all_control(cJSON *root)
         mqtt_publish_error(1007, "Missing state field");
         return;
     }
-    MOS_All_Control(state->valueint ? MOS_ON : MOS_OFF);
+    mos_All_Control(state->valueint ? mos_ON : mos_OFF);
     mqtt_publish_mos_state();
 }
 
@@ -446,7 +445,7 @@ static void mqtt_stop_heartbeat(void)
 }
 
 /*
-    发布 MOS 事件
+    发布 mos 事件
 */
 static void mqtt_publish_mos_event(uint8_t ch, uint8_t state)
 {
@@ -471,30 +470,30 @@ static void mqtt_publish_error(int error_code, const char *error_msg)
 }
 
 /*
-    发布 MOS 状态
+    发布 mos 状态
 */
 void mqtt_publish_mos_state(void)
 {
     // 主题
     const char *topic = mqtt_topic_mos_state();
     // 创建消息
-    uint8_t state = MOS_Get_All();
+    uint8_t state = mos_Get_All();
     char *msg = mqtt_message_create_mos_state(state);
     // 发布
     esp_err_t ret = mqtt_manager_publish(topic, msg, strlen(msg), 1, true);
     free(msg);
     if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "发布 MOS 状态失败: %d", ret);
+        ESP_LOGE(TAG, "发布 mos 状态失败: %d", ret);
     }
     else
     {
-        ESP_LOGI(TAG, "发布 MOS 状态成功");
+        ESP_LOGI(TAG, "发布 mos 状态成功");
     }
 }
 
 /*
-    发布 MOS 事件（外部调用）
+    发布 mos 事件（外部调用）
 */
 void mqtt_service_publish_mos_event(uint8_t channel, uint8_t state)
 {

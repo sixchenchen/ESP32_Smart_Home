@@ -132,7 +132,7 @@ static void sensor_manager_on_protocol_event(const sen_protocol_event_t *event, 
 
     if (event->type == SEN_EVENT_TIMEOUT)
     {
-        ESP_LOGW(TAG, "Protocol timeout: cmd=0x%02X, seq=%d", event->cmd, event->seq);
+        ESP_LOGW(TAG, "protocol timeout: cmd=0x%02X, seq=%d", event->cmd, event->seq);
     }
 }
 

@@ -42,18 +42,15 @@ esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password)
         ESP_LOGE(TAG, "SSID 为空！");
         return ESP_FAIL;
     }
-
     // 2. 初始化配置结构体
     wifi_config_t wifi_config = {
         .sta = {
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
-
     // 3. 复制 SSID
     strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
     wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0';
-
     // 4. 复制密码
     if (password != NULL && strlen(password) > 0)
     {
@@ -65,9 +62,6 @@ esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password)
         wifi_config.sta.password[0] = '\0';
         ESP_LOGI(TAG, "无密码，尝试连接开放 WiFi");
     }
-
-    ESP_LOGI(TAG, "配置 WiFi: SSID=%s", ssid);
-
     // 5. 设置配置
     esp_err_t ret = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     if (ret != ESP_OK)
@@ -75,7 +69,6 @@ esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password)
         ESP_LOGE(TAG, "设置 WiFi 配置失败: %d", ret);
         return ESP_FAIL;
     }
-
     // 6. 连接,连接成功后会触发事件回调
     ret = esp_wifi_connect();
     if (ret != ESP_OK)
@@ -83,8 +76,6 @@ esp_err_t wifi_mode_sta_connect(const char *ssid, const char *password)
         ESP_LOGE(TAG, "WiFi 连接失败: %d", ret);
         return ESP_FAIL;
     }
-
-    ESP_LOGI(TAG, "正在连接 WiFi: %s", ssid);
     return ESP_OK;
 }
 

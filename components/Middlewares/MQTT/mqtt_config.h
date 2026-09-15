@@ -48,13 +48,13 @@
 // ==================== OFFLINE原因 ====================
 #define REASON_MQTT_LWT "mqtt_lwt"
 // ==================== 事件类型 ====================
-#define EVENT_MOS_CHANGE "mos_change"
+#define EVENT_mos_CHANGE "mos_change"
 #define EVENT_FACTORY_RESET "factory_reset"
 // ==================== MQTT控制命令 ====================
 #define JSON_CMD "cmd"
-#define CMD_MOS_SINGLE "mos"
-#define CMD_MOS_ALL "mos_all"
-#define CMD_MOS_QUERY "mos_query"
+#define CMD_mos_SINGLE "mos"
+#define CMD_mos_ALL "mos_all"
+#define CMD_mos_QUERY "mos_query"
 // ==================== 心跳 ====================
 #define HEARTBEAT_INTERVAL_MS 30000
 

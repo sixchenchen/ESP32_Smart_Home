@@ -97,13 +97,13 @@ char *mqtt_message_create_factory_reset(void)
 }
 
 /*
-    MOS状态变化事件
+    mos状态变化事件
     格式: {"device":"xxx","product":"xxx","type":"event","data":{"event":"mos_change","channel":0,"state":1}}
 */
 char *mqtt_message_create_mos_event(uint8_t channel, uint8_t state)
 {
     cJSON *data = json_create_object();
-    json_add_string(data, JSON_EVENT, EVENT_MOS_CHANGE);
+    json_add_string(data, JSON_EVENT, EVENT_mos_CHANGE);
     json_add_number(data, JSON_CHANNEL, channel);
     json_add_number(data, JSON_STATE, state);
     json_add_bool(data, JSON_SUCCESS, true); 
@@ -137,7 +137,7 @@ char *mqtt_message_create_error(uint16_t code, const char *msg)
 }
 
 /*
-    MOS状态消息
+    mos状态消息
     格式: {"device":"xxx","product":"xxx","type":"state","data":{"mos0":0,"mos1":1,...}}
 */
 char *mqtt_message_create_mos_state(uint8_t mos_state)
