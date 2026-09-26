@@ -113,39 +113,39 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 设备首次启动时 `provisioned=0`，进入**注册阶段**：
 
 ```
-┌─ 注册阶段 ─────────────────────────────────────────┐
-│ Broker: mqtt://192.168.124.6:1884 （临时注册端口）          │
-│                                                      │
-│ 设备请求 → /provision/device/{MAC}/register              │
-│        发注册请求                                     │
-│        格式: {                                        │
-│                "device_id": "xxx",                     │
-│                "product_id": "xxx",                     │
-│                "hardware_version": "V1.0",            │
-│                "firmware_version": "1.0.0",           │
-│                "action": "register",                    │
-│                "timestamp": 1234567890                  │
-│            }                                          │
-│                                                      │
-│ 服务器响应设备 ← /provision/device/{MAC}/config/response       │
-│        等待配置响应（包含正式 broker 地址/凭据）         │
-│        {                                              │
-│                "status": "success",                 │
-│                "config": {                 │
-│                    "broker_uri": "mqtt://192.168.124.6:1883",                 │
-│                    "client_id": "B4BFE90CDBA0",                 │
-│                    "username": "MQTT1",                 │
-│                    "password": "123456",                 │
-│                    "will_topic": "device/B4BFE90CDBA0/will"                 │
-│                }                 │
-│            }                 │
-│                                                      │
-│ 收到后：                                             │
-│  1. 保存新配置到 NVS                                  │
-│  2. 断开 broker 1884                                  │
-│  3. 连接 broker 1883（正式）                          │
-│  4. 标记 provisioned = true                           │
-└──────────────────────────────────────────────────────┘
+┌─ 注册阶段 ─────────────────────────────────────────────────────┐
+│ Broker: mqtt://192.168.124.6:1884 （临时注册端口）             │
+│                                                                │
+│ 设备请求 → /provision/device/{MAC}/register                    │
+│   发注册请求，格式:                                            │
+│   {                                                            │
+│     "device_id":        "xxx",                                 │
+│     "product_id":       "xxx",                                 │
+│     "hardware_version": "V1.0",                                │
+│     "firmware_version": "1.0.0",                               │
+│     "action":           "register",                            │
+│     "timestamp":        1234567890                             │
+│   }                                                            │
+│                                                                │
+│ 服务器响应 → 设备 ← /provision/device/{MAC}/config/response    │
+│   等待配置响应（包含正式 broker 地址/凭据）:                   │
+│   {                                                            │
+│     "status": "success",                                       │
+│     "config": {                                                │
+│       "broker_uri": "mqtt://192.168.124.6:1883",               │
+│       "client_id":  "B4BFE90CDBA0",                            │
+│       "username":   "MQTT1",                                   │
+│       "password":   "123456",                                  │
+│       "will_topic": "device/B4BFE90CDBA0/will"                 │
+│     }                                                          │
+│   }                                                            │
+│                                                                │
+│ 收到后：                                                       │
+│   1. 保存新配置到 NVS                                          │
+│   2. 断开 broker 1884                                          │
+│   3. 连接 broker 1883（正式）                                  │
+│   4. 标记 provisioned = true                                   │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3. OTA 远程升级
