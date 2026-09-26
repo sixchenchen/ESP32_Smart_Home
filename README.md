@@ -217,7 +217,7 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | `device/{mac}/state` | 0 | OTA 启动通知 | `{"type":"ota","state":"started"}` |
 | `device/{mac}/state` | 0 | OTA 启动失败 | `{"type":"ota","state":"fail","code":2}` |
 | `device/{mac}/sensor` | 0 | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` |
-| `/provision/device/{mac}/register` | 1 | 注册请求（broker 1884） | 见下方「注册流程」 |
+| `/provision/device/{mac}/register` | 1 | 注册请求（broker 1884） | - |
 
 ### 4. mos 管控制
 
