@@ -5,4 +5,4 @@ cmake_minimum_required(VERSION 3.22)
 set(EXTRA_COMPONENT_DIRS components/Middlewares components/protocol)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(sample_project VERSION 1.0.0)
+project(sample_project VERSION 1.0.3)
