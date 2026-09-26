@@ -54,6 +54,7 @@ TPL_mos_STATE = "device/{dev}/mos_state"
 TPL_HEART = "device/{dev}/heart"
 TPL_SENSOR = "device/{dev}/sensor"
 TPL_OTA = "device/{dev}/ota"
+BROADCAST_OTA = "$broadcast/ota"
 TPL_WILL = "device/{dev}/will"
 TPL_CONFIG = "device/{dev}/config"
 TPL_PROVISION_REG = "/provision/device/{dev}/register"
@@ -156,12 +157,21 @@ def cmd_mos_query(client):
 
 
 def cmd_ota(client, version, url):
-    """触发 OTA 升级"""
-    print(f"\n=== OTA 升级: version={version} ===")
+    """触发 OTA 升级（单设备点对点）"""
+    print(f"\n=== OTA 点对点升级: version={version} → {DEVICE_ID} ===")
     client.sub(topic(TPL_EVENT))
     client.sub(topic(TPL_STATUS))
     client.pub(TPL_OTA, {"url": url, "version": version})
     print("设备开始下载后会自动重启，观察串口日志...")
+
+
+def cmd_ota_broadcast(client, version, url):
+    """触发 OTA 升级（所有设备广播）"""
+    print(f"\n=== OTA 广播升级: version={version} → ALL DEVICES ===")
+    client.sub(topic(TPL_EVENT))
+    client.sub(topic(TPL_STATUS))
+    client.pub(BROADCAST_OTA, {"url": url, "version": version}, use_tpl=False)
+    print("所有订阅了 $broadcast/ota 的设备将同时触发 OTA...")
 
 
 def cmd_listen(client, duration=15):
@@ -326,7 +336,9 @@ def main():
     parser.add_argument("--mos-query", action="store_true",
                         help="查询 mos 状态")
     parser.add_argument("--ota", nargs=2, metavar=("VERSION", "URL"),
-                        help="OTA 升级: version url")
+                        help="OTA 点对点升级: version url")
+    parser.add_argument("--ota-broadcast", nargs=2, metavar=("VERSION", "URL"),
+                        help="OTA 广播升级（所有设备）: version url")
     parser.add_argument("--listen", type=int, nargs="?", const=15, metavar="SECONDS",
                         help="监听所有 topic（默认15秒）")
     parser.add_argument("--provision", nargs="?", default=None,
@@ -342,7 +354,8 @@ def main():
         cmd_provision_response(args.host, PROVISION_PORT, args.host, args.port)
         return
 
-    if any([args.mos, args.mos_all is not None, args.mos_query, args.ota, args.listen]):
+    if any([args.mos, args.mos_all is not None, args.mos_query, args.ota,
+            args.ota_broadcast, args.listen]):
         client = DeviceClient(args.host, args.port, args.user, args.password).connect()
         try:
             if args.mos:
@@ -353,6 +366,8 @@ def main():
                 cmd_mos_query(client)
             if args.ota:
                 cmd_ota(client, args.ota[0], args.ota[1])
+            if args.ota_broadcast:
+                cmd_ota_broadcast(client, args.ota_broadcast[0], args.ota_broadcast[1])
             if args.listen is not None:
                 cmd_listen(client, args.listen)
         finally:

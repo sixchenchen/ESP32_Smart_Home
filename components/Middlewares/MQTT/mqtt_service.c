@@ -300,6 +300,10 @@ static void mqtt_control_callback(const char *topic, const uint8_t *data, int le
     {
         mqtt_handle_ota_message(data, len);
     }
+    else if (strcmp(topic, mqtt_topic_ota_broadcast()) == 0)
+    {
+        mqtt_handle_ota_message(data, len);
+    }
     else if (strcmp(topic, mqtt_topic_config()) == 0)
     {
         mqtt_handle_config_message(data, len);

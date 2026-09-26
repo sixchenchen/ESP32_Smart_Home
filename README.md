@@ -198,7 +198,8 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | `device/{mac}/control` | 1 | MOS 单路开关 | `{"cmd":"mos","channel":1,"state":1}` |
 | `device/{mac}/control` | 1 | MOS 全部开关 | `{"cmd":"mos_all","state":1}` |
 | `device/{mac}/control` | 1 | MOS 状态查询 | `{"cmd":"mos_query"}` |
-| `device/{mac}/ota` | 1 | OTA 升级触发 | `{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30"}` |
+| `device/{mac}/ota` | 1 | OTA 升级触发（单设备点对点） | `{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30"}` |
+| `$broadcast/ota` | 1 | OTA 升级触发（所有设备广播） | 同上，所有设备同时收到并升级 |
 | `device/{mac}/config` | 1 | 远程配置下发 | `{"config":{"log_level":3,"xxx":"yyy"}}` |
 | `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | 见下方「注册流程」 |
 
@@ -281,11 +282,20 @@ curl -X POST http://<device-ip>/api/ota \
 curl http://<device-ip>/ota_status
 ```
 
-### 方式三：MQTT 触发
+### 方式三：MQTT 点对点（单设备）
 
-MQTTX 连接 **broker 1883**，发布：
+MQTTX 连接 **broker 1883**，发布到**目标设备专属 topic**：
 ```
-Topic:   device/B4BFE90CDBA0/ota
+Topic:   device/B4BFE90CDBA0/ota      ← 只有这一台设备会收到
+QoS:     1
+Payload: {"url":"http://<your-pc-ip>:8000/sample_project.bin","version":"1.0.30"}
+```
+
+### 方式四：MQTT 广播（所有设备同时升级）
+
+MQTTX 连接 **broker 1883**，发布到**全局广播 topic**，所有设备同时收到并触发 OTA：
+```
+Topic:   $broadcast/ota               ← 所有设备都订阅了这个 topic
 QoS:     1
 Payload: {"url":"http://<your-pc-ip>:8000/sample_project.bin","version":"1.0.30"}
 ```
@@ -293,18 +303,38 @@ Payload: {"url":"http://<your-pc-ip>:8000/sample_project.bin","version":"1.0.30"
 ### 流程示意
 
 ```
+┌─ 点对点（HTTP / MQTT 单设备）─────────────────────────┐
+│                                                         │
+│  服务器 → device/B4BFE90CDBA0/ota                      │
+│  或 POST http://192.168.124.7/api/ota                   │
+│                                                         │
+│  B4BFE90CDBA0 ──触发OTA──→ 校验版本 ──下载──→ 重启     │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+
+┌─ 广播（MQTT 全设备统一）────────────────────────────┐
+│                                                         │
+│  服务器 → $broadcast/ota                               │
+│                                                         │
+│  B4BFE90CDBA0 ──触发OTA──→ 校验版本 ──下载──→ 重启     │
+│  C8D7A9B6E5F4 ──触发OTA──→ 校验版本 ──下载──→ 重启     │
+│  8A9B0C1D2E3F ──触发OTA──→ 校验版本 ──下载──→ 重启     │
+│  ... 所有订阅了 $broadcast/ota 的设备同时升级           │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+
                     电脑（固件服务器）
                     python -m http.server 8000
                           │
                           │ HTTP GET /sample_project.bin
                           ▼
-设备 ──触发OTA──→ 校验版本 ──下载固件──→ 校验签名 ──写入新分区 ──重启
-     POST /api/ota                                                │
-     或 MQTT                                                        ▼
-                                                          Bootloader
-                                                     校验新分区有效
-                                                     ↓ 标记 boot
-                                                     从 ota_1 启动
+                     下载固件，校验签名
+                     写入新分区，重启
+                          │
+                          ▼
+                     Bootloader 校验新分区
+                     ↓ 标记 boot
+                     从 ota_1 启动
 ```
 
 ---

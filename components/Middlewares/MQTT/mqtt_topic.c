@@ -13,6 +13,7 @@ static char heart[80];
 static char will[80];
 static char sensor[80];
 static char ota[80];
+static char ota_broadcast[64];
 static char config[80];
 static char provision_register[128];
 static char provision_config[128];
@@ -29,6 +30,7 @@ void mqtt_topic_init(void)
     snprintf(will, sizeof(will), "device/%s/will", dev->device_id);
     snprintf(sensor, sizeof(sensor), "device/%s/sensor", dev->device_id);
     snprintf(ota, sizeof(ota), "device/%s/ota", dev->device_id);
+    snprintf(ota_broadcast, sizeof(ota_broadcast), "$broadcast/ota");
     snprintf(config, sizeof(config), "device/%s/config", dev->device_id);
     snprintf(provision_register, sizeof(provision_register), "/provision/device/%s/register", dev->device_id);
     snprintf(provision_config, sizeof(provision_config), "/provision/device/%s/config/response", dev->device_id);
@@ -77,6 +79,11 @@ const char *mqtt_topic_sensor(void)
 const char *mqtt_topic_ota(void)
 {
     return ota;
+}
+
+const char *mqtt_topic_ota_broadcast(void)
+{
+    return ota_broadcast;
 }
 
 const char *mqtt_topic_config(void)
