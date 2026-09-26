@@ -204,20 +204,20 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 
 **上行（设备 → 服务器）**
 
-| Topic | QoS | Retain | 触发场景 | JSON 格式 |
-|-------|-----|--------|----------|-----------|
-| `device/{mac}/status` | 1 | ✅ | MQTT 连接成功上线 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"online"}}` |
-| `device/{mac}/status` | 1 | ❌ | 主动离线（恢复出厂等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"offline","reason":"factory_reset"}}` |
-| `device/{mac}/will` | 1 | ✅ | 异常断开（LWT，broker 自动发） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","data":{"reason":"mqtt_lwt"}}` |
-| `device/{mac}/heart` | 0 | ❌ | 定时心跳（每 30 秒） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"heartbeat","data":{"uptime":1234}}` |
-| `device/{mac}/mos_state` | 1 | ✅ | 上线后 / 查询后 / MOS 变化后 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"mos0":0,"mos1":1,"mos2":0,"mos3":0,"mos4":0,"mos5":0,"mos6":0,"mos7":0}}` |
-| `device/{mac}/event` | 1 | ❌ | MOS 开关事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"mos_change","channel":1,"state":1,"success":true}}` |
-| `device/{mac}/event` | 1 | ❌ | 错误响应（JSON 解析失败/OTA 缺字段等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"error","data":{"code":2003,"message":"ota missing url field"}}` |
-| `device/{mac}/event` | 1 | ❌ | 恢复出厂事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"factory_reset"}}` |
-| `device/{mac}/state` | 0 | ❌ | OTA 启动通知 | `{"type":"ota","state":"started"}` |
-| `device/{mac}/state` | 0 | ❌ | OTA 启动失败 | `{"type":"ota","state":"fail","code":2}` |
-| `device/{mac}/sensor` | 0 | ❌ | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` |
-| `/provision/device/{mac}/register` | 1 | ❌ | 注册请求（broker 1884） | 见下方「注册流程」 |
+| Topic | QoS | 触发场景 | JSON 格式 |
+|-------|-----|----------|-----------|
+| `device/{mac}/status` | 1 | MQTT 连接成功上线 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"online"}}` |
+| `device/{mac}/status` | 1 | 主动离线（恢复出厂等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"offline","reason":"factory_reset"}}` |
+| `device/{mac}/will` | 1 | 异常断开（LWT，broker 自动发） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","data":{"reason":"mqtt_lwt"}}` |
+| `device/{mac}/heart` | 0 | 定时心跳（每 30 秒） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"heartbeat","data":{"uptime":1234}}` |
+| `device/{mac}/mos_state` | 1 | 上线后 / 查询后 / MOS 变化后 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"mos0":0,"mos1":1,"mos2":0,"mos3":0,"mos4":0,"mos5":0,"mos6":0,"mos7":0}}` |
+| `device/{mac}/event` | 1 | MOS 开关事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"mos_change","channel":1,"state":1,"success":true}}` |
+| `device/{mac}/event` | 1 | 错误响应（JSON 解析失败/OTA 缺字段等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"error","data":{"code":2003,"message":"ota missing url field"}}` |
+| `device/{mac}/event` | 1 | 恢复出厂事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"factory_reset"}}` |
+| `device/{mac}/state` | 0 | OTA 启动通知 | `{"type":"ota","state":"started"}` |
+| `device/{mac}/state` | 0 | OTA 启动失败 | `{"type":"ota","state":"fail","code":2}` |
+| `device/{mac}/sensor` | 0 | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` |
+| `/provision/device/{mac}/register` | 1 | 注册请求（broker 1884） | 见下方「注册流程」 |
 
 ### 4. mos 管控制
 
