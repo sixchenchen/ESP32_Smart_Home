@@ -113,39 +113,39 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 设备首次启动时 `provisioned=0`，进入**注册阶段**：
 
 ```
-┌─ 注册阶段 ─────────────────────────────────────────┐
-│ Broker: mqtt://192.168.124.6:1884 （临时注册端口）          │
-│                                                      │
-│ 设备请求 → /provision/device/{MAC}/register              │
-│        发注册请求                                     │
-│        格式: {                                        │
-│                "device_id": "xxx",                     │
-│                "product_id": "xxx",                     │
-│                "hardware_version": "V1.0",            │
-│                "firmware_version": "1.0.0",           │
-│                "action": "register",                    │
-│                "timestamp": 1234567890                  │
-│            }                                          │
-│                                                      │
-│ 服务器响应设备 ← /provision/device/{MAC}/config/response       │
-│        等待配置响应（包含正式 broker 地址/凭据）         │
-│        {                                              │
-│                "status": "success",                 │
-│                "config": {                 │
-│                    "broker_uri": "mqtt://192.168.124.6:1883",                 │
-│                    "client_id": "B4BFE90CDBA0",                 │
-│                    "username": "MQTT1",                 │
-│                    "password": "123456",                 │
-│                    "will_topic": "device/B4BFE90CDBA0/will"                 │
-│                }                 │
-│            }                 │
-│                                                      │
-│ 收到后：                                             │
-│  1. 保存新配置到 NVS                                  │
-│  2. 断开 broker 1884                                  │
-│  3. 连接 broker 1883（正式）                          │
-│  4. 标记 provisioned = true                           │
-└──────────────────────────────────────────────────────┘
+┌─ 注册阶段 ─────────────────────────────────────────────────────┐
+│ Broker: mqtt://192.168.124.6:1884 （临时注册端口）             │
+│                                                                │
+│ 设备请求 → /provision/device/{MAC}/register                    │
+│   发注册请求，格式:                                            │
+│   {                                                            │
+│     "device_id":        "xxx",                                 │
+│     "product_id":       "xxx",                                 │
+│     "hardware_version": "V1.0",                                │
+│     "firmware_version": "1.0.0",                               │
+│     "action":           "register",                            │
+│     "timestamp":        1234567890                             │
+│   }                                                            │
+│                                                                │
+│ 服务器响应 → 设备 ← /provision/device/{MAC}/config/response    │
+│   等待配置响应（包含正式 broker 地址/凭据）:                   │
+│   {                                                            │
+│     "status": "success",                                       │
+│     "config": {                                                │
+│       "broker_uri": "mqtt://192.168.124.6:1883",               │
+│       "client_id":  "B4BFE90CDBA0",                            │
+│       "username":   "MQTT1",                                   │
+│       "password":   "123456",                                  │
+│       "will_topic": "device/B4BFE90CDBA0/will"                 │
+│     }                                                          │
+│   }                                                            │
+│                                                                │
+│ 收到后：                                                       │
+│   1. 保存新配置到 NVS                                          │
+│   2. 断开 broker 1884                                          │
+│   3. 连接 broker 1883（正式）                                  │
+│   4. 标记 provisioned = true                                   │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3. OTA 远程升级
@@ -201,24 +201,24 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | `device/{mac}/ota` | 1 | OTA 升级触发（单设备点对点） | `{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30"}` |
 | `$broadcast/ota` | 1 | OTA 升级触发（所有设备广播） | 同上，所有设备同时收到并升级 |
 | `device/{mac}/config` | 1 | 远程配置下发 | `{"config":{"log_level":3,"xxx":"yyy"}}` |
-| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | 见下方「注册流程」 |
+| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | MQTT 双阶段注册 |
 
 **上行（设备 → 服务器）**
 
-| Topic | QoS | Retain | 触发场景 | JSON 格式 |
-|-------|-----|--------|----------|-----------|
-| `device/{mac}/status` | 1 | ✅ | MQTT 连接成功上线 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"online"}}` |
-| `device/{mac}/status` | 1 | ❌ | 主动离线（恢复出厂等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"offline","reason":"factory_reset"}}` |
-| `device/{mac}/will` | 1 | ✅ | 异常断开（LWT，broker 自动发） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","data":{"reason":"mqtt_lwt"}}` |
-| `device/{mac}/heart` | 0 | ❌ | 定时心跳（每 30 秒） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"heartbeat","data":{"uptime":1234}}` |
-| `device/{mac}/mos_state` | 1 | ✅ | 上线后 / 查询后 / MOS 变化后 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"mos0":0,"mos1":1,"mos2":0,"mos3":0,"mos4":0,"mos5":0,"mos6":0,"mos7":0}}` |
-| `device/{mac}/event` | 1 | ❌ | MOS 开关事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"mos_change","channel":1,"state":1,"success":true}}` |
-| `device/{mac}/event` | 1 | ❌ | 错误响应（JSON 解析失败/OTA 缺字段等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"error","data":{"code":2003,"message":"ota missing url field"}}` |
-| `device/{mac}/event` | 1 | ❌ | 恢复出厂事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"factory_reset"}}` |
-| `device/{mac}/state` | 0 | ❌ | OTA 启动通知 | `{"type":"ota","state":"started"}` |
-| `device/{mac}/state` | 0 | ❌ | OTA 启动失败 | `{"type":"ota","state":"fail","code":2}` |
-| `device/{mac}/sensor` | 0 | ❌ | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` |
-| `/provision/device/{mac}/register` | 1 | ❌ | 注册请求（broker 1884） | 见下方「注册流程」 |
+| Topic | QoS | 触发场景 | JSON 格式 |
+|-------|-----|----------|-----------|
+| `device/{mac}/status` | 1 | MQTT 连接成功上线 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"online"}}` |
+| `device/{mac}/status` | 1 | 主动离线（恢复出厂等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"offline","reason":"factory_reset"}}` |
+| `device/{mac}/will` | 1 | 异常断开（LWT，broker 自动发） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","data":{"reason":"mqtt_lwt"}}` |
+| `device/{mac}/heart` | 0 | 定时心跳（每 30 秒） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"heartbeat","data":{"uptime":1234}}` |
+| `device/{mac}/mos_state` | 1 | 上线后 / 查询后 / MOS 变化后 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"mos0":0,"mos1":1,"mos2":0,"mos3":0,"mos4":0,"mos5":0,"mos6":0,"mos7":0}}` |
+| `device/{mac}/event` | 1 | MOS 开关事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"mos_change","channel":1,"state":1,"success":true}}` |
+| `device/{mac}/event` | 1 | 错误响应（JSON 解析失败/OTA 缺字段等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"error","data":{"code":2003,"message":"ota missing url field"}}` |
+| `device/{mac}/event` | 1 | 恢复出厂事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"factory_reset"}}` |
+| `device/{mac}/state` | 0 | OTA 启动通知 | `{"type":"ota","state":"started"}` |
+| `device/{mac}/state` | 0 | OTA 启动失败 | `{"type":"ota","state":"fail","code":2}` |
+| `device/{mac}/sensor` | 0 | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` |
+| `/provision/device/{mac}/register` | 1 | 注册请求（broker 1884） | MQTT 双阶段注册 |
 
 ### 4. mos 管控制
 
