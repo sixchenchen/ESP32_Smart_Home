@@ -33,12 +33,13 @@ static wifi_manager_state_t wifi_state = WIFI_MANAGER_IDLE;
 static TaskHandle_t delayed_switch_task_handle = NULL;
 
 // 函数声明
+static uint32_t wifi_reconnect_calc_delay(void);
+static void wifi_reconnect_reset(void);
 static void wifi_manager_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 static void wifi_manager_handle_disconnect(wifi_event_sta_disconnected_t *reason);
 static void wifi_manager_handle_connected(void);
 static void delayed_switch_to_sta_task(void *arg);
 static void wifi_reconnect_timer_cb(void *arg);
-static uint32_t wifi_reconnect_calc_delay(void);
 
 // 计算下次重连延时
 static uint32_t wifi_reconnect_calc_delay(void)

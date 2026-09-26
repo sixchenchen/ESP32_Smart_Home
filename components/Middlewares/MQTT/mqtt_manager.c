@@ -333,8 +333,6 @@ esp_err_t mqtt_manager_publish(const char *topic, const char *data, int len, int
 
     if (msg_id < 0)
     {
-        // 静默失败：publish 经常是瞬时资源紧张（OTA/下载时）造成的，
-        // 不需要打 ERROR/WARN 级别的日志打扰用户
         return ESP_FAIL;
     }
     ESP_LOGI(TAG, "发布 id=%d topic=%s", msg_id, topic);

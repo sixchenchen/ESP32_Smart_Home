@@ -410,12 +410,7 @@ static void heartbeat_task(void *arg)
         char *msg = mqtt_message_create_heartbeat(esp_timer_get_time() / 1000000);
         if (msg != NULL)
         {
-            mqtt_manager_publish(
-                mqtt_topic_heart(),
-                msg,
-                strlen(msg),
-                0,
-                false);
+            mqtt_manager_publish(mqtt_topic_heart(),msg,strlen(msg),0,false);
             free(msg);
         }
         vTaskDelay(pdMS_TO_TICKS(HEARTBEAT_INTERVAL_MS));

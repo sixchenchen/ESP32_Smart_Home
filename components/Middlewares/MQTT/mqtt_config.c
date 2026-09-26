@@ -93,7 +93,7 @@ esp_err_t mqtt_config_load(mqtt_config_t *config)
     return ESP_OK;
 }
 
-// ========== 保存配置 ==========
+// ========== 保存配置到NVS中 ==========
 esp_err_t mqtt_config_save(const mqtt_config_t *config)
 {
     if (config == NULL)

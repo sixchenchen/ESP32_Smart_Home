@@ -273,7 +273,7 @@ static void mqtt_provision_task(void *arg)
             if (g_config_received)
             {
                 ESP_LOGI(TAG, "Config received, saving to NVS...");
-
+                // 保存配置到 NVS
                 esp_err_t save_ret = mqtt_config_save(&g_received_config);
                 if (save_ret != ESP_OK)
                 {
@@ -285,9 +285,9 @@ static void mqtt_provision_task(void *arg)
                     ESP_LOGI(TAG, "Provision complete! Reconnecting to production broker...");
                     mqtt_manager_stop();
                     mqtt_manager_destroy();
+                    // 使用新的NVS中的配置进行初始化MQTT 服务
                     mqtt_service_init();              
                     mqtt_manager_on_wifi_connected(); 
-
                     prov_set_state(PROV_STATE_SUCCESS);
                 }
                 goto prov_done;

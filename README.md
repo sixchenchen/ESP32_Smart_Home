@@ -114,13 +114,31 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 
 ```
 ┌─ 注册阶段 ─────────────────────────────────────────┐
-│ Broker: mqtt://<host>:1884 （临时注册端口）          │
+│ Broker: mqtt://192.168.124.6:1884 （临时注册端口）          │
 │                                                      │
-│ 设备 → /provision/device/{MAC}/register              │
+│ 设备请求 → /provision/device/{MAC}/register              │
 │        发注册请求                                     │
+│        格式: {                                        │
+│                "device_id": "xxx",                     │
+│                "product_id": "xxx",                     │
+│                "hardware_version": "V1.0",            │
+│                "firmware_version": "1.0.0",           │
+│                "action": "register",                    │
+│                "timestamp": 1234567890                  │
+│            }                                          │
 │                                                      │
-│ 设备 ← /provision/device/{MAC}/config/response       │
-│        等待配置响应（包含正式 broker 地址/凭据）       │
+│ 服务器响应设备 ← /provision/device/{MAC}/config/response       │
+│        等待配置响应（包含正式 broker 地址/凭据）         │
+│        {                                              │
+│                "status": "success",                 │
+│                "config": {                 │
+│                    "broker_uri": "mqtt://192.168.124.6:1883",                 │
+│                    "client_id": "B4BFE90CDBA0",                 │
+│                    "username": "MQTT1",                 │
+│                    "password": "123456",                 │
+│                    "will_topic": "device/B4BFE90CDBA0/will"                 │
+│                }                 │
+│            }                 │
 │                                                      │
 │ 收到后：                                             │
 │  1. 保存新配置到 NVS                                  │
@@ -136,8 +154,15 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 
 | 触发方式 | 入口 | 适用场景 |
 |----------|------|----------|
-| **HTTP** | `POST http://<device-ip>/api/ota` | 局域网手动触发 |
-| **MQTT** | 发布到 `device/{mac}/ota` | 云端批量下发 |
+| HTTP | `POST http://192.168.124.7/api/ota` | 局域网手动触发 |
+| MQTT | 发布到 `device/{mac}/ota` | 云端批量下发 |
+
+**数据格式**
+
+| 触发方式 | 数据格式 |
+|----------|----------|
+| HTTP | `{"url": "http://192.168.124.6:8000/sample_project.bin", "version": "1.0.30"}` |
+| MQTT | `{"url": "http://192.168.124.6:8000/sample_project.bin", "version": "1.0.30"}` |
 
 #### OTA 状态机
 
