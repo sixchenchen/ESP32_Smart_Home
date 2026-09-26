@@ -83,13 +83,7 @@ esp_err_t uart_drv_init(void)
         UART_PIN_NO_CHANGE,
         UART_PIN_NO_CHANGE));
 
-    ESP_ERROR_CHECK(uart_driver_install(
-        UART_PORT_NUM,
-        UART_BUF_SIZE,
-        0,
-        20,
-        &uart_queue,
-        0));
+    ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, UART_BUF_SIZE, 0, 20, &uart_queue, 0));
 
     // priority 从 10 降到 7：与 sensor_task(7) / esp-mqtt / WiFi 在同一区间，避免 UART 采集任务抢占网络栈调度
     xTaskCreate(uart_task, "uart_task", 8192, NULL, 7, NULL);
@@ -103,7 +97,7 @@ esp_err_t uart_drv_send(const uint8_t *data, uint16_t len)
     {
         return ESP_ERR_INVALID_ARG;
     }
-  
+
     int written = uart_write_bytes(UART_PORT_NUM, (const char *)data, len);
     if (written < 0)
     {

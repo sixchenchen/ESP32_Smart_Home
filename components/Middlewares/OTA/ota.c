@@ -198,7 +198,6 @@ esp_err_t ota_abort(void)
 }
 
 /* ─────────────── OTA 任务实现 ─────────────── */
-
 static ota_result_t ota_do_upgrade(const ota_job_t *job)
 {
     esp_err_t ret;
@@ -264,9 +263,7 @@ static ota_result_t ota_do_upgrade(const ota_job_t *job)
     esp_app_desc_t remote_desc;
     if (esp_https_ota_get_img_desc(h_ota, &remote_desc) == ESP_OK)
     {
-        ESP_LOGI(TAG, "remote fw: version=%s project=%s",
-                 remote_desc.version, remote_desc.project_name);
-
+        ESP_LOGI(TAG, "remote fw: version=%s project=%s", remote_desc.version, remote_desc.project_name);
         /* 再次校验（HTTP 头里的版本 vs 当前） */
         const char *cur = ota_get_current_version();
         if (ota_version_compare(remote_desc.version, cur) <= 0)
@@ -277,14 +274,11 @@ static ota_result_t ota_do_upgrade(const ota_job_t *job)
             return OTA_RESULT_FAIL_VERSION;
         }
     }
-
     int total_size = esp_https_ota_get_image_size(h_ota);
     ESP_LOGI(TAG, "firmware size: %d bytes", total_size);
-
     /* 7. 主循环 perform —— 每次下载一段，写入 flash */
     ota_set_state(OTA_STATE_DOWNLOADING);
     g_abort_flag = false;
-
     while (1)
     {
         if (g_abort_flag)
@@ -293,21 +287,17 @@ static ota_result_t ota_do_upgrade(const ota_job_t *job)
             esp_https_ota_abort(h_ota);
             return OTA_RESULT_FAIL_DOWNLOAD;
         }
-
         ret = esp_https_ota_perform(h_ota);
-
         /* 计算进度 */
         int done = esp_https_ota_get_image_len_read(h_ota);
         int total = total_size;
         int pct = (total > 0) ? (done * 100 / total) : 0;
-
         if (job->cb)
         {
             job->cb(OTA_STATE_DOWNLOADING, pct,
                     (uint32_t)done, (uint32_t)total,
                     job->user_data);
         }
-
         if (ret == ESP_OK)
         {
             /* 下载完成 */
@@ -320,43 +310,34 @@ static ota_result_t ota_do_upgrade(const ota_job_t *job)
             esp_https_ota_abort(h_ota);
             return OTA_RESULT_FAIL_DOWNLOAD;
         }
-
         vTaskDelay(pdMS_TO_TICKS(OTA_PERFORM_DELAY));
     }
 
     /* 8. finish —— 校验固件 + 设置启动分区 */
     ota_set_state(OTA_STATE_VERIFYING);
-
     ret = esp_https_ota_finish(h_ota);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "esp_https_ota_finish failed: %s", esp_err_to_name(ret));
         return OTA_RESULT_FAIL_VERIFY;
     }
-
     /* 9. 成功，重启 */
     ota_set_state(OTA_STATE_SUCCEEDED);
     ESP_LOGI(TAG, "OTA SUCCEEDED, restarting in 1s...");
-
     if (job->cb)
     {
         job->cb(OTA_STATE_SUCCEEDED, 100, 0, 0, job->user_data);
     }
-
     vTaskDelay(pdMS_TO_TICKS(OTA_RESTART_DELAY));
     esp_restart();
     /* 不会到这里 */
-
     return OTA_RESULT_OK;
 }
-
 /* 任务入口 */
 static void ota_task(void *arg)
 {
     ota_job_t *job = (ota_job_t *)arg;
-
     ota_result_t r = ota_do_upgrade(job);
-
     if (r != OTA_RESULT_OK)
     {
         ota_set_state(OTA_STATE_FAILED);
@@ -366,23 +347,16 @@ static void ota_task(void *arg)
             job->cb(OTA_STATE_FAILED, 0, 0, 0, job->user_data);
         }
     }
-
     vTaskDelay(pdMS_TO_TICKS(OTA_FAIL_DELAY));
-
     ota_lock();
     g_state = OTA_STATE_IDLE;
     ota_unlock();
-
     vTaskDelete(NULL);
     free(job);
 }
 
 /* ─────────────── 公共入口 ─────────────── */
-
-ota_result_t ota_start(const char *url,
-                       const char *remote_version,
-                       ota_progress_cb_t cb,
-                       void *user_data)
+ota_result_t ota_start(const char *url, const char *remote_version, ota_progress_cb_t cb, void *user_data)
 {
     /* 首次调用时创建 mutex */
     if (g_mutex == NULL)
@@ -391,14 +365,12 @@ ota_result_t ota_start(const char *url,
         if (g_mutex == NULL)
             return OTA_RESULT_FAIL_ARG;
     }
-
     /* 互斥检查 */
     if (ota_is_in_progress())
     {
         ESP_LOGW(TAG, "OTA already in progress (state=%s)", ota_state_to_string(ota_get_state()));
         return OTA_RESULT_FAIL_IN_PROGRESS;
     }
-
     /* 参数 */
     if (url == NULL || url[0] == '\0')
     {
@@ -410,7 +382,6 @@ ota_result_t ota_start(const char *url,
         ESP_LOGE(TAG, "url too long");
         return OTA_RESULT_FAIL_ARG;
     }
-
     /* 组装 job */
     ota_job_t *job = (ota_job_t *)malloc(sizeof(ota_job_t));
     if (job == NULL)
