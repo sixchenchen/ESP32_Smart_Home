@@ -80,6 +80,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             // 正式运行阶段：订阅所有业务 topic
             mqtt_manager_subscribe(mqtt_topic_control(), 1);
             mqtt_manager_subscribe(mqtt_topic_ota(), 1);
+            mqtt_manager_subscribe(mqtt_topic_config(), 1);
         }
         // provision config response 始终订阅（正式阶段也可能收到 config 更新）
         mqtt_manager_subscribe(mqtt_topic_provision_config(), 1);

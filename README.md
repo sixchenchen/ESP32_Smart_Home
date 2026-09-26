@@ -164,6 +164,11 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 | HTTP | `{"url": "http://192.168.124.6:8000/sample_project.bin", "version": "1.0.30"}` |
 | MQTT | `{"url": "http://192.168.124.6:8000/sample_project.bin", "version": "1.0.30"}` |
 
+··· 注意：这里需要开启本地服务器(sample_project.bin所在的文件夹下面使用cmd命令启动服务器) ···
+``` 
+    cd D:\data\c_code\esp32s\espidf\project\ESP32_Smart_Home\build\
+    python -m http.server 8000 --bind 0.0.0.0
+```
 #### OTA 状态机
 
 ```
@@ -184,17 +189,35 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | GET | `/ota_status` | 查询 OTA 状态 |
 | POST | `/api/ota` | 触发 OTA 升级 |
 
-#### MQTT Topic（正式阶段 broker 1883）
+#### MQTT Topic 完整协议（正式阶段 broker 1883）
 
-| 方向 | Topic | 说明 |
-|------|-------|------|
-| 设备订阅 | `device/{mac}/control` | mos 控制命令 |
-| 设备订阅 | `device/{mac}/ota` | OTA 升级命令 |
-| 设备订阅 | `/provision/device/{mac}/config/response` | 配置更新 |
-| 设备发布 | `device/{mac}/event` | 事件上报（状态/错误） |
-| 设备发布 | `device/{mac}/heartbeat` | 心跳 |
-| 设备发布 | `device/{mac}/sensor` | 传感器数据 |
-| 设备发布 | `/provision/device/{mac}/register` | 注册请求 |
+**下行（服务器 → 设备）**
+
+| Topic | QoS | 触发场景 | JSON 格式 |
+|-------|-----|----------|-----------|
+| `device/{mac}/control` | 1 | MOS 单路开关 | `{"cmd":"mos","channel":1,"state":1}` |
+| `device/{mac}/control` | 1 | MOS 全部开关 | `{"cmd":"mos_all","state":1}` |
+| `device/{mac}/control` | 1 | MOS 状态查询 | `{"cmd":"mos_query"}` |
+| `device/{mac}/ota` | 1 | OTA 升级触发 | `{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30"}` |
+| `device/{mac}/config` | 1 | 远程配置下发 | `{"config":{"log_level":3,"xxx":"yyy"}}` |
+| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | 见下方「注册流程」 |
+
+**上行（设备 → 服务器）**
+
+| Topic | QoS | Retain | 触发场景 | JSON 格式 |
+|-------|-----|--------|----------|-----------|
+| `device/{mac}/status` | 1 | ✅ | MQTT 连接成功上线 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"online"}}` |
+| `device/{mac}/status` | 1 | ❌ | 主动离线（恢复出厂等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"state":"offline","reason":"factory_reset"}}` |
+| `device/{mac}/will` | 1 | ✅ | 异常断开（LWT，broker 自动发） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","data":{"reason":"mqtt_lwt"}}` |
+| `device/{mac}/heart` | 0 | ❌ | 定时心跳（每 30 秒） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"heartbeat","data":{"uptime":1234}}` |
+| `device/{mac}/mos_state` | 1 | ✅ | 上线后 / 查询后 / MOS 变化后 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","data":{"mos0":0,"mos1":1,"mos2":0,"mos3":0,"mos4":0,"mos5":0,"mos6":0,"mos7":0}}` |
+| `device/{mac}/event` | 1 | ❌ | MOS 开关事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"mos_change","channel":1,"state":1,"success":true}}` |
+| `device/{mac}/event` | 1 | ❌ | 错误响应（JSON 解析失败/OTA 缺字段等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"error","data":{"code":2003,"message":"ota missing url field"}}` |
+| `device/{mac}/event` | 1 | ❌ | 恢复出厂事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","data":{"event":"factory_reset"}}` |
+| `device/{mac}/state` | 0 | ❌ | OTA 启动通知 | `{"type":"ota","state":"started"}` |
+| `device/{mac}/state` | 0 | ❌ | OTA 启动失败 | `{"type":"ota","state":"fail","code":2}` |
+| `device/{mac}/sensor` | 0 | ❌ | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` |
+| `/provision/device/{mac}/register` | 1 | ❌ | 注册请求（broker 1884） | 见下方「注册流程」 |
 
 ### 4. mos 管控制
 
@@ -374,29 +397,85 @@ Topic:   device/B4BFE90CDBA0/ota
 Payload: {"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30"}
 ```
 
-#### 设备主动上报（需监听）
+#### 设备主动上报（MQTTX 监听示例）
 
-| Topic | 触发时机 | 内容示例 |
-|-------|----------|----------|
-| `device/{id}/status` | MQTT 连接成功 / LWT | `{"type":"state","data":{"state":"online"}}` |
-| `device/{id}/event` | mos 变化 / 错误 | `{"type":"event","data":{"event":"mos_change","channel":1,"state":1}}` |
-| `device/{id}/event` | 错误响应 | `{"type":"error","data":{"code":2003,"message":"ota missing url field"}}` |
-| `device/{id}/mos_state` | 查询 / 变化后 | `{"type":"state","data":{"mos0":1,"mos1":0,...}}` |
-| `device/{id}/heart` | 每 30 秒 | `{"type":"heartbeat","data":{"uptime":1234}}` |
-| `device/{id}/sensor` | 传感器批量上报 | `{"type":"sensor_batch","data":[...]}` |
-| `device/{id}/will` | LWT 遗嘱（异常断开） | `{"type":"offline","data":{"reason":"mqtt_lwt"}}` |
+在 MQTTX 里订阅 `device/B4BFE90CDBA0/#` 可一次性看到所有消息。
+
+| Topic | 字段结构 | 说明 |
+|-------|----------|------|
+| `device/{id}/status` | `{"device":"...","product":"...","type":"state","data":{"state":"online"}}` | 上线消息（retain=true，重连也能看到） |
+| `device/{id}/will` | `{"device":"...","product":"...","type":"offline","data":{"reason":"mqtt_lwt"}}` | LWT 遗嘱（retain=true，broker 自动发布） |
+| `device/{id}/mos_state` | `{"device":"...","product":"...","type":"state","data":{"mos0":0,"mos1":1,...,"mos7":0}}` | 8 路 MOS 状态位图 |
+| `device/{id}/event` | `{"device":"...","product":"...","type":"event","data":{"event":"mos_change","channel":1,"state":1,"success":true}}` | MOS 变化事件 |
+| `device/{id}/event` | `{"device":"...","product":"...","type":"error","data":{"code":2003,"message":"ota missing url field"}}` | 错误响应 |
+| `device/{id}/state` | `{"type":"ota","state":"started"}` | OTA 启动通知 |
+| `device/{id}/state` | `{"type":"ota","state":"fail","code":2}` | OTA 启动失败（code 见 ota.h） |
+| `device/{id}/heart` | `{"device":"...","product":"...","type":"heartbeat","data":{"uptime":1234}}` | 心跳（每 30 秒，QoS 0） |
+| `device/{id}/sensor` | `{"device":"...","product":"...","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` | 传感器批量数据 |
 
 #### 注册流程（broker 1884）
 
 ```
-# 设备 → 服务器（注册请求）
-Topic:  /provision/device/B4BFE90CDBA0/register
-Payload: {"device_id":"B4BFE90CDBA0","firmware_version":"1.0.29","action":"register",...}
-
-# 服务器 → 设备（配置响应）
-Topic:  /provision/device/B4BFE90CDBA0/config/response
-Payload: {"status":"success","config":{"broker_uri":"mqtt://192.168.124.6:1883","username":"MQTT1","password":"123456",...}}
+┌─ Step 1: 设备（broker 1884）─────────────────────────┐
+│ Topic : /provision/device/B4BFE90CDBA0/register       │
+│ QoS   : 1                                             │
+│ Payload: {                                            │
+│   "device_id": "B4BFE90CDBA0",                        │
+│   "product_id": "SmartHome-v1",                       │
+│   "hardware_version": "V1.0",                         │
+│   "firmware_version": "1.0.29",                       │
+│   "action": "register",                               │
+│   "timestamp": 1234567890                             │
+│ }                                                     │
+└──────────────────────────────────────────────────────┘
+                        ↓
+┌─ Step 2: 服务器回复（broker 1884）───────────────────┐
+│ Topic : /provision/device/B4BFE90CDBA0/config/response│
+│ QoS   : 1                                             │
+│ Payload: {                                            │
+│   "status": "success",                                │
+│   "config": {                                         │
+│     "broker_uri": "mqtt://192.168.124.6:1883",        │
+│     "client_id": "B4BFE90CDBA0",                      │
+│     "username": "MQTT1",                               │
+│     "password": "123456",                              │
+│     "will_topic": "device/B4BFE90CDBA0/will"          │
+│   }                                                   │
+│ }                                                     │
+└──────────────────────────────────────────────────────┘
+                        ↓
+┌─ Step 3: 设备内部动作 ───────────────────────────────┐
+│ 1. 保存 broker_uri / client_id / username / password  │
+│    / will_topic 到 NVS（mqtt_config namespace）       │
+│ 2. 断开 broker 1884 的 MQTT 连接                      │
+│ 3. 销毁旧 MQTT 客户端                                 │
+│ 4. 重新 init → start，连接 broker 1883                 │
+│ 5. MQTT_EVENT_CONNECTED → 订阅 control + ota + config │
+│ 6. publish status=online + mos_state + 启动心跳       │
+└──────────────────────────────────────────────────────┘
 ```
+
+**注意：** `client_id` 和 `will_topic` 服务器可省略，设备会自动用 device_id 和默认值填充。`status != "success"` 时设备会重试 10 次，每次等待 30 秒。
+
+#### 错误码速查（上行 event topic）
+
+| code | 来源模块 | 含义 |
+|------|----------|------|
+| 1001 | mqtt_service | control 消息过长 / JSON 解析失败 |
+| 1002 | mqtt_service | control 缺少 `cmd` 字段 |
+| 1003 | mqtt_service | 未知 control 命令 |
+| 1004 | mqtt_service | MOS 命令缺 `channel` 或 `state` |
+| 1005 | mqtt_service | MOS channel/state 非数字 |
+| 1006 | mqtt_service | MOS channel 越界（≥8） |
+| 1007 | mqtt_service | MOS 控制失败 / mos_all 缺 state |
+| 2001 | mqtt_service | OTA 消息长度异常 |
+| 2002 | mqtt_service | OTA JSON 解析失败 |
+| 2003 | mqtt_service | OTA 缺少 `url` 字段 |
+| 2004 | mqtt_service | OTA url 提取失败 |
+| 3001 | mqtt_service | config 消息过长 |
+| 3002 | mqtt_service | config JSON 解析失败 |
+| 3003 | mqtt_service | config 缺 `config` 对象 |
+| 1xxx | ota.c | OTA_RESULT_* 错误码（见 ota.h） |
 
 ---
 

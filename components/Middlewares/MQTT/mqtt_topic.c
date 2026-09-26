@@ -23,6 +23,7 @@ void mqtt_topic_init(void)
     snprintf(control, sizeof(control), "device/%s/control", dev->device_id);
     snprintf(status, sizeof(status), "device/%s/status", dev->device_id);
     snprintf(event, sizeof(event), "device/%s/event", dev->device_id);
+    snprintf(state, sizeof(state), "device/%s/state", dev->device_id);
     snprintf(mos_state, sizeof(mos_state), "device/%s/mos_state", dev->device_id);
     snprintf(heart, sizeof(heart), "device/%s/heart", dev->device_id);
     snprintf(will, sizeof(will), "device/%s/will", dev->device_id);
