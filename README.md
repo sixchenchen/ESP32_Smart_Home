@@ -200,7 +200,7 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | `device/{mac}/control` | 1 | MOS 状态查询 | `{"cmd":"mos_query"}` |
 | `device/{mac}/ota` | 1 | OTA 升级触发 | `{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30"}` |
 | `device/{mac}/config` | 1 | 远程配置下发 | `{"config":{"log_level":3,"xxx":"yyy"}}` |
-| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | - |
+| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | MQTT 双阶段注册 |
 
 **上行（设备 → 服务器）**
 
@@ -217,7 +217,7 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | `device/{mac}/state` | 0 | OTA 启动通知 | `{"type":"ota","state":"started"}` |
 | `device/{mac}/state` | 0 | OTA 启动失败 | `{"type":"ota","state":"fail","code":2}` |
 | `device/{mac}/sensor` | 0 | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":12345,"data":[{"sensor_id":1,"timestamp":12340,"count":100}]}` |
-| `/provision/device/{mac}/register` | 1 | 注册请求（broker 1884） | - |
+| `/provision/device/{mac}/register` | 1 | 注册请求（broker 1884） | MQTT 双阶段注册 |
 
 ### 4. mos 管控制
 
