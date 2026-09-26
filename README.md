@@ -200,7 +200,7 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 | `device/{mac}/control` | 1 | MOS 状态查询 | `{"cmd":"mos_query"}` |
 | `device/{mac}/ota` | 1 | OTA 升级触发 | `{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30"}` |
 | `device/{mac}/config` | 1 | 远程配置下发 | `{"config":{"log_level":3,"xxx":"yyy"}}` |
-| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | 见下方「注册流程」 |
+| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | - |
 
 **上行（设备 → 服务器）**
 
