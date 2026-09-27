@@ -529,3 +529,265 @@ Payload: {"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30
 - OTA 使用 HTTP 明文下载（无 TLS），证书校验已跳过（`.cert_pem = NULL`）
 - MQTT 默认凭据硬编码在 `mqtt_config.c` 中（测试方便，正式部署需改为加密存储）
 - 暂无 SNTP 时间同步，传感器 timestamp 为设备 uptime
+---------------------------------------------------------------------------------------------------------------------------------------
+# MQTT Topic 完整协议（重构版）
+
+## 1. 下行协议（服务器 → 设备）
+
+| Topic | QoS | 触发场景 | JSON 格式 |
+|---|---:|---|---|
+| `device/{mac}/command` | 1 | MOS 单路开关 | `{"commandId":"550e8400-e29b-41d4-a716-446655440000","action":"set","target":"mos","channel":1,"params":{"state":1},"timestamp":1710000000000}` |
+| `device/{mac}/command` | 1 | MOS 全部开关 | `{"commandId":"550e8400-e29b-41d4-a716-446655440001","action":"set","target":"mos","channel":0,"params":{"state":1},"timestamp":1710000000001}` |
+| `device/{mac}/command` | 1 | MOS 状态查询 | `{"commandId":"550e8400-e29b-41d4-a716-446655440002","action":"get","target":"mos","channel":1,"timestamp":1710000000002}` |
+| `device/{mac}/command` | 1 | LED 开关（扩展） | `{"commandId":"...","action":"set","target":"led","channel":1,"params":{"state":1,"brightness":80},"timestamp":1710000000003}` |
+| `device/{mac}/command` | 1 | 舵机角度（扩展） | `{"commandId":"...","action":"set","target":"servo","channel":1,"params":{"angle":90},"timestamp":1710000000004}` |
+| `device/{mac}/ota` | 1 | OTA 升级触发（单设备点对点） | `{"commandId":"550e8400-...","action":"start","target":"ota","params":{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30","md5":"abc123","size":1048576},"timestamp":1710000000005}` |
+| `$broadcast/ota` | 1 | OTA 升级触发（所有设备广播） | 同上，所有设备同时收到并升级（无 `commandId`） |
+| `device/{mac}/config` | 1 | 远程配置下发 | `{"commandId":"550e8400-...","action":"set","target":"config","params":{"log_level":3,"xxx":"yyy"},"timestamp":1710000000006}` |
+| `/provision/device/{mac}/config/response` | 1 | 注册配置（broker 1884） | MQTT 双阶段注册 |
+
+---
+
+## 2. 上行协议（设备 → 服务器）
+
+| Topic | QoS | Retained | 触发场景 | JSON 格式 |
+|---|---:|:---:|---|---|
+| `device/{mac}/online` | 1 | true | MQTT 连接成功上线 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"online","timestamp":1710000000000,"data":{}}` |
+| `device/{mac}/offline` | 1 | true | 主动离线（恢复出厂等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","timestamp":1710000000001,"data":{"reason":"factory_reset"}}` |
+| `device/{mac}/will` | 1 | true | 异常断开（LWT，Broker 自动发） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","timestamp":1710000000002,"data":{"reason":"mqtt_lwt"}}` |
+| `device/{mac}/heartbeat` | 0 | false | 定时心跳（每 30 秒） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"heartbeat","timestamp":1710000000003,"data":{"uptime":1234,"rssi":-65}}` |
+| `device/{mac}/state` | 1 | true | 上线全量状态（MOS/LED/舵机） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000004,"data":{"full":true,"targets":{"mos":[{"channel":0,"params":{"state":0}},{"channel":1,"params":{"state":1}},{"channel":2,"params":{"state":0}}],"led":[{"channel":1,"params":{"state":1,"brightness":80}}],"servo":[{"channel":1,"params":{"angle":90}}]}}}` |
+| `device/{mac}/state` | 1 | false | MOS 增量状态上报 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000005,"data":{"full":false,"targets":{"mos":[{"channel":1,"params":{"state":0}}]}}}` |
+| `device/{mac}/state` | 1 | false | OTA 启动通知 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000006,"data":{"full":false,"targets":{"ota":[{"params":{"state":"started","version":"1.0.30"}}]}}}` |
+| `device/{mac}/state` | 1 | false | OTA 进度通知 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000007,"data":{"full":false,"targets":{"ota":[{"params":{"state":"downloading","progress":45}}]}}}` |
+| `device/{mac}/state` | 1 | false | OTA 启动失败 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000008,"data":{"full":false,"targets":{"ota":[{"params":{"state":"fail","code":2}}]}}}` |
+| `device/{mac}/ack` | 1 | false | 指令回执-成功 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"ack","timestamp":1710000000009,"data":{"commandId":"550e8400-...","success":true,"action":"set","target":"mos","channel":1,"result":{"state":1}}}` |
+| `device/{mac}/ack` | 1 | false | 指令回执-失败 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"ack","timestamp":1710000000010,"data":{"commandId":"550e8400-...","success":false,"error":"CHANNEL_NOT_FOUND","message":"通道 1 不存在"}}` |
+| `device/{mac}/event` | 1 | false | MOS 开关事件（本地触发） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","timestamp":1710000000011,"data":{"event":"mos_change","channel":1,"state":1,"trigger":"local_button"}}` |
+| `device/{mac}/event` | 1 | false | 恢复出厂事件 | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","timestamp":1710000000012,"data":{"event":"factory_reset"}}` |
+| `device/{mac}/event` | 1 | false | 错误响应（JSON 解析失败/OTA 缺字段等） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"error","timestamp":1710000000013,"data":{"code":2003,"message":"ota missing url field","context":"ota"}}` |
+| `device/{mac}/sensor` | 0 | false | 传感器批量数据（满/超时 flush） | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"sensor_batch","timestamp":1710000000014,"data":[{"sensor_id":1,"timestamp":1710000000010,"value":25.5,"unit":"°C"},{"sensor_id":2,"timestamp":1710000000012,"value":60.2,"unit":"%"}]}` |
+| `/provision/device/{mac}/register` | 1 | false | 注册请求（broker 1884） | MQTT 双阶段注册 |
+
+---
+
+## 3. 下行指令字段
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|:---:|---|
+| `commandId` | string | 是 | 指令唯一 ID（UUID），用于 ACK 匹配 |
+| `action` | string | 是 | `set` / `get` / `toggle` / `start` |
+| `target` | string | 是 | `mos` / `led` / `servo` / `ota` / `config` |
+| `channel` | int | 否 | 通道号，`0` 表示全部；无通道概念时可省略 |
+| `params` | object | 否 | 动作参数，`set` / `start` 时必填 |
+| `timestamp` | long | 是 | 毫秒时间戳 |
+
+---
+
+## 4. 上行通用字段
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|:---:|---|
+| `device` | string | 是 | 设备 MAC |
+| `product` | string | 是 | 产品型号 |
+| `type` | string | 是 | `online` / `offline` / `heartbeat` / `state` / `ack` / `event` / `error` / `sensor_batch` |
+| `timestamp` | long | 是 | 毫秒时间戳 |
+| `data` | object | 是 | 具体内容，随 `type` 变化 |
+
+---
+
+## 5. State 内部字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `full` | boolean | `true` = 全量上报，`false` = 增量上报 |
+| `targets` | object | key 为部件名（`mos` / `led` / `servo` / `ota`），value 为通道数组 |
+| `targets.{name}[].channel` | int | 通道号 |
+| `targets.{name}[].params` | object | 该通道的状态参数 |
+
+---
+
+## 6. ACK 内部字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `commandId` | string | 对应下行指令的 `commandId` |
+| `success` | boolean | 是否成功 |
+| `action / target / channel` | - | 回显指令信息 |
+| `result` | object | 成功时的结果 |
+| `error / message` | string | 失败时的错误码和描述 |
+
+---
+
+## 7. Event 内部字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `event` | string | 事件名，如 `mos_change` / `factory_reset` |
+| `trigger` | string | 触发源：`local_button` / `remote` / `schedule` |
+| `code / message` | - | `type=error` 时的错误码和描述 |
+| `context` | string | 错误发生的上下文模块 |
+
+---
+
+## 8. 错误码规范
+
+| 错误码 | 含义 |
+|---|---|
+| `INVALID_PAYLOAD` | JSON 格式错误或字段缺失 |
+| `UNKNOWN_ACTION` | action 不支持 |
+| `UNKNOWN_TARGET` | target 不支持 |
+| `CHANNEL_NOT_FOUND` | 通道不存在 |
+| `CHANNEL_OUT_OF_RANGE` | 通道号超出范围 |
+| `PARAM_MISSING` | 缺少必要参数 |
+| `PARAM_INVALID` | 参数值非法 |
+| `DEVICE_BUSY` | 设备忙，稍后重试 |
+| `EXECUTE_FAILED` | 执行失败（硬件层） |
+| `TIMEOUT` | 执行超时 |
+
+---
+
+## 9. QoS 与 Retained 策略
+
+| Topic | QoS | Retained | 原因 |
+|---|---:|:---:|---|
+| `device/{mac}/command` | 1 | false | 指令必须送达；retained 会导致设备重连收到旧指令，危险 |
+| `device/{mac}/ota` | 1 | false | 同上 |
+| `device/{mac}/config` | 1 | false | 同上 |
+| `device/{mac}/online` | 1 | true | 上线状态需快速恢复 |
+| `device/{mac}/offline` | 1 | true | 离线状态需快速恢复 |
+| `device/{mac}/will` | 1 | true | LWT，需快速恢复 |
+| `device/{mac}/heartbeat` | 0 | false | 高频，丢一两条无所谓 |
+| `device/{mac}/state` | 1 | true | 状态需快速恢复 |
+| `device/{mac}/ack` | 1 | false | 回执即时消费，无 retained 意义 |
+| `device/{mac}/event` | 1 | false | 事件即时消费 |
+| `device/{mac}/sensor` | 0 | false | 批量数据，高频 |
+
+---
+
+## 10. 后端订阅配置
+
+```yaml
+mqtt:
+  topics:
+    - device/+/online
+    - device/+/offline
+    - device/+/will
+    - device/+/heartbeat
+    - device/+/state
+    - device/+/ack
+    - device/+/event
+    - device/+/sensor
+
+  qos:
+    - 1
+    - 1
+    - 1
+    - 0
+    - 1
+    - 1
+    - 1
+    - 0
+```
+
+---
+
+## 11. 指令生命周期状态机
+
+```text
+┌─────────────┐
+│   PENDING   │  后端入库
+└──────┬──────┘
+       │ MQTT 发布
+       ▼
+┌─────────────┐
+│    SENT     │  已发送，等待 ACK
+└──────┬──────┘
+       │
+  ┌────┼────┐
+  │    │    │
+收到  收到  超时
+成功  失败  未收
+ACK   ACK   ACK
+  │    │    │
+  ▼    ▼    ▼
+┌────┐┌────┐┌────────┐
+│SUC ││FAIL││TIMEOUT │
+│CESS││    ││        │
+└────┘└────┘└───┬────┘
+                │
+           retryCount < maxRetry?
+                │
+           ┌────┴────┐
+           │ 是      │ 否
+           ▼         ▼
+       重新 SENT   标记 FAILED
+```
+
+---
+
+## 12. 设备在线判断方案
+
+| 机制 | Topic | 延迟 | 说明 |
+|---|---|---|---|
+| LWT 遗嘱消息 | `device/{mac}/will` | 秒级 | Broker 自动发，异常断线 |
+| 主动离线 | `device/{mac}/offline` | 秒级 | 设备正常关机/重启 |
+| 上线通知 | `device/{mac}/online` | 秒级 | 设备连接成功 |
+| 心跳超时 | `device/{mac}/heartbeat` | 分钟级 | 兜底，`now - lastHeartbeat > 3 × 间隔` |
+| retained 恢复 | `device/{mac}/state` | 秒级 | 后端重启后快速恢复状态 |
+
+---
+
+## 13. 状态上报扩展规则
+
+新增部件（如继电器）时：
+
+1. **不改 Topic**：仍使用 `device/{mac}/state`
+2. **不改结构**：仍使用 `full + targets`
+3. **只增加 key**：在 `targets` 中增加 `relay`
+
+例如：
+
+```json
+{
+  "type": "state",
+  "data": {
+    "full": true,
+    "targets": {
+      "mos": [
+        {
+          "channel": 1,
+          "params": {
+            "state": 1
+          }
+        }
+      ],
+      "relay": [
+        {
+          "channel": 1,
+          "params": {
+            "state": 0
+          }
+        }
+      ],
+      "led": [
+        {
+          "channel": 1,
+          "params": {
+            "state": 1,
+            "brightness": 80
+          }
+        }
+      ],
+      "servo": [
+        {
+          "channel": 1,
+          "params": {
+            "angle": 90
+          }
+        }
+      ]
+    }
+  }
+}
+```
