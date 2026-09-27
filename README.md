@@ -228,9 +228,94 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → [SUCCEEDED | FAILED]
 
 ### 5. 传感器数据采集
 
-- UART 与 GD32 传感器板通信
-- 自定义帧格式（帧头 + 长度 + CRC + 数据）
-- 批量上报：数据缓存满或超时（10 秒）自动 flush
+#### 硬件链路
+
+```
+GD32 传感器板 ──UART──→ ESP32
+  (发送传感器原始数据帧)    (解析帧 → 环形缓冲 → MQTT 批量上报)
+```
+
+#### UART 自定义帧格式（GD32 → ESP32）
+
+```
+┌────────┬──────┬──────┬──────┬──────────┬────────────────────┬──────┐
+│ HEAD   │ ADDR │ CMD  │ SEQ  │ LEN(2B)  │ DATA(N × 9 字节)   │ CRC  │
+│ 0x55   │ 0x01 │ 0x01 │ 0x01 │ 0x00D9   │ ...                │ 0xA5 │
+│ 1 字节 │ 1B   │ 1B   │ 1B   │ 大端序    │                    │ 1B   │
+└────────┴──────┴──────┴──────┴──────────┴────────────────────┴──────┘
+
+DATA 区域每条子项 9 字节（SEN_ITEM_SIZE）：
+┌───────────┬───────────────────┬───────────────┐
+│ sensor_id │ timestamp_ms(4B)  │ value(4B)     │
+│ uint8     │ uint32 小端序      │ uint32 小端序  │
+└───────────┴───────────────────┴───────────────┘
+```
+
+#### 内部处理链路
+
+```
+UART 接收帧
+  │
+  ▼
+sen_protocol（帧校验 + CRC）
+  │ 解析出 SEN_CMD_SENSOR_DATA (0x01)
+  ▼
+sensor_manager（环形缓冲，256 条容量）
+  │ 回调 sensor_data_callback
+  ▼
+sensor_mqtt_bridge（批量聚合）
+  │ 触发 flush 条件：
+  │   ① 积累满 32 条（BATCH_MAX_COUNT）
+  │   ② 第一批数据到达后超过 100ms（BATCH_TIMEOUT_MS）
+  ▼
+MQTT 发布到 device/{mac}/sensor（QoS 0，不等待 PUBACK）
+```
+
+#### MQTT 上行 Topic
+
+**Topic**: `device/{mac}/sensor`（例：`device/B4BFE90CDBA0/sensor`）  
+**方向**: 设备 → 服务器  
+**QoS**: 0（传感器数据周期性，丢包可接受）  
+**Retain**: false  
+
+#### JSON 格式
+
+```json
+{
+    "device": "B4BFE90CDBA0",
+    "product": "SmartHome-v1",
+    "type": "sensor_batch",
+    "timestamp": 12345,
+    "data": [
+        {"sensor_id": 1, "timestamp": 12340, "count": 100},
+        {"sensor_id": 2, "timestamp": 12341, "count": 101},
+        {"sensor_id": 3, "timestamp": 12342, "count": 102}
+    ]
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `device` | string | ✅ | 设备 ID（MAC 无冒号） |
+| `product` | string | ✅ | 产品标识，固定为 `SmartHome-v1` |
+| `type` | string | ✅ | 固定值 `sensor_batch` |
+| `timestamp` | number | ✅ | ESP32 收到这一批数据时的 uptime（秒） |
+| `data` | array | ✅ | 传感器数据数组，1~32 条 |
+| `data[i].sensor_id` | number | ✅ | 传感器编号（GD32 板定义） |
+| `data[i].timestamp` | number | ✅ | 传感器时间戳（毫秒，GD32 板提供） |
+| `data[i].count` | number | ✅ | 传感器计数值 |
+
+**注意**：内部帧 DATA 区每条子项原本有 9 字节（sensor_id + timestamp + value），但发布到 MQTT 时只取前 7 字节（sensor_id + timestamp + count），`value` 字段当前未上传。
+
+#### 批量上报参数
+
+| 参数 | 值 | 说明 |
+|------|----|------|
+| BATCH_MAX_COUNT | 32 | 一批最多聚合多少条就 flush |
+| BATCH_TIMEOUT_MS | 100 | 第一批到达后多久不管满不满都 flush（毫秒） |
+| SENSOR_CACHE_SIZE | 256 | sensor_manager 环形缓冲容量（条） |
+| 发布 QoS | 0 | 不做 PUBACK 确认，避免阻塞采集任务 |
+| 发布条件 | MQTT 在正式 broker（1883）且 RUNNING | provisioning 阶段传感器数据会被丢弃 |
 
 ### 6. LED 状态指示
 
