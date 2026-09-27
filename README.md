@@ -876,3 +876,701 @@ ACK   ACK   ACK
   }
 }
 ```
+
+=================================================================================================================
+# MQTT Topic 完整协议（重构版）
+
+> Broker 1883（运行时）+ Broker 1884（注册）
+
+---
+
+## 一、Topic 命名总览
+
+### 1.1 下行（服务器 → 设备）
+
+| **Topic**                                 | **QoS** | **Retained** | **触发场景**          |
+| :---------------------------------------- | :------ | :----------- | :---------------- |
+| `device/{mac}/command`                    | 1       | false        | 控制指令（MOS/LED/舵机等） |
+| `device/{mac}/config`                     | 1       | false        | 远程配置下发            |
+| `device/{mac}/ota`                        | 1       | false        | OTA 升级触发（单设备点对点）  |
+| `$broadcast/ota`                          | 1       | false        | OTA 升级触发（所有设备广播）  |
+| `/provision/device/{mac}/config/response` | 1       | false        | 注册响应（broker 1884） |
+
+### 1.2 上行（设备 → 服务器）
+
+| **Topic**                          | **QoS** | **Retained** | **触发场景**             |
+| :--------------------------------- | :------ | :----------- | :------------------- |
+| `device/{mac}/online`              | 1       | true         | MQTT 连接成功上线          |
+| `device/{mac}/offline`             | 1       | true         | 主动离线（正常关机/恢复出厂）      |
+| `device/{mac}/will`                | 1       | true         | 异常断开（LWT，Broker 自动发） |
+| `device/{mac}/heartbeat`           | 0       | false        | 定时心跳（每 30 秒）         |
+| `device/{mac}/state`               | 1       | true         | 状态上报（全量/增量）          |
+| `device/{mac}/ack`                 | 1       | false        | 指令回执                 |
+| `device/{mac}/event`               | 1       | false        | 事件/错误上报              |
+| `device/{mac}/sensor`              | 0       | false        | 传感器批量数据              |
+| `/provision/device/{mac}/register` | 1       | false        | 注册请求（broker 1884）    |
+
+---
+
+## 二、下行协议（服务器 → 设备）
+
+### 2.1 控制指令 `device/{mac}/command`
+
+统一结构：`{commandId, action, target, channel, params, timestamp}`
+
+| **场景**     | **QoS** | **JSON 格式**                                                                                                                             |
+| :--------- | :------ | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| MOS 单路开关   | 1       | `{"commandId":"550e8400-...","action":"set","target":"mos","channel":1,"params":{"state":1},"timestamp":1710000000000}`                 |
+| MOS 全部开关   | 1       | `{"commandId":"550e8400-...","action":"set","target":"mos","channel":0,"params":{"state":1},"timestamp":1710000000001}`                 |
+| MOS 状态查询   | 1       | `{"commandId":"550e8400-...","action":"get","target":"mos","channel":1,"timestamp":1710000000002}`                                      |
+| LED 开关（扩展） | 1       | `{"commandId":"550e8400-...","action":"set","target":"led","channel":1,"params":{"state":1,"brightness":80},"timestamp":1710000000003}` |
+| 舵机角度（扩展）   | 1       | `{"commandId":"550e8400-...","action":"set","target":"servo","channel":1,"params":{"angle":90},"timestamp":1710000000004}`              |
+| 继电器（扩展）    | 1       | `{"commandId":"550e8400-...","action":"set","target":"relay","channel":1,"params":{"state":0},"timestamp":1710000000005}`               |
+
+### 2.2 OTA 触发（点对点）`device/{mac}/ota`
+
+| **场景**        | **QoS** | **JSON 格式**                                                                                                                                                                                                                   |
+| :------------ | :------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OTA 升级触发（单设备） | 1       | `{"commandId":"550e8400-...","action":"start","target":"ota","params":{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30","md5":"abc123def456","size":1048576,"force":false},"timestamp":1710000000006}` |
+
+### 2.3 OTA 触发（广播）`$broadcast/ota`
+
+| **场景**         | **QoS** | **JSON 格式**                                                                                                                                                                                                   |
+| :------------- | :------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| OTA 升级触发（所有设备） | 1       | `{"action":"start","target":"ota","params":{"url":"http://192.168.124.6:8000/sample_project.bin","version":"1.0.30","md5":"abc123def456","size":1048576,"rollout":{"percent":10}},"timestamp":1710000000007}` |
+
+> 广播无 `commandId`，设备收到后自己生成本地 ID 用于 ACK 上报。支持 `rollout.percent` 灰度。
+
+### 2.4 配置下发 `device/{mac}/config`
+
+| **场景**  | **QoS** | **JSON 格式**                                                                                                                                                                                                   |
+| :------ | :------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 远程配置下发  | 1       | `{"commandId":"550e8400-...","action":"set","target":"config","params":{"config":{"log_level":3,"heartbeat_interval":60,"sensor_batch_size":20},"configVersion":5,"persist":true},"timestamp":1710000000008}` |
+| 查询当前配置  | 1       | `{"commandId":"550e8400-...","action":"get","target":"config","timestamp":1710000000009}`                                                                                                                     |
+| 重置配置为默认 | 1       | `{"commandId":"550e8400-...","action":"reset","target":"config","timestamp":1710000000010}`                                                                                                                   |
+
+### 2.5 注册响应 `/provision/device/{mac}/config/response`（broker 1884）
+
+| **场景**               | **QoS** | **JSON 格式** |
+| :------------------- | :------ | :---------- |
+| 注册成功，返回 MQTT 凭据和初始配置 | 1       | 见下方         |
+
+
+```json
+{
+  "device": "B4BFE90CDBA0",
+  "success": true,
+  "mqtt": {
+    "host": "192.168.124.6",
+    "port": 1883,
+    "clientId": "device-B4BFE90CDBA0",
+    "username": "dev_B4BFE90CDBA0",
+    "password": "xxxxx",
+    "keepAlive": 60
+  },
+  "topics": {
+    "command":   "device/B4BFE90CDBA0/command",
+    "ack":       "device/B4BFE90CDBA0/ack",
+    "state":     "device/B4BFE90CDBA0/state",
+    "heartbeat": "device/B4BFE90CDBA0/heartbeat",
+    "event":     "device/B4BFE90CDBA0/event",
+    "sensor":    "device/B4BFE90CDBA0/sensor"
+  },
+  "config": {
+    "log_level": 3,
+    "heartbeat_interval": 30,
+    "sensor_batch_size": 10
+  },
+  "timestamp": 1710000000011
+}
+```
+
+
+---
+
+## 三、上行协议（设备 → 服务器）
+
+### 3.1 上线 `device/{mac}/online`
+
+| **场景**      | **QoS** | **Retained** | **JSON 格式**                                                                                              |
+| :---------- | :------ | :----------- | :------------------------------------------------------------------------------------------------------- |
+| MQTT 连接成功上线 | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"online","timestamp":1710000000100,"data":{}}` |
+
+### 3.2 主动离线 `device/{mac}/offline`
+
+| **场景** | **QoS** | **Retained** | **JSON 格式**                                                                                                                       |
+| :----- | :------ | :----------- | :-------------------------------------------------------------------------------------------------------------------------------- |
+| 正常关机   | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","timestamp":1710000000101,"data":{"reason":"shutdown"}}`      |
+| 恢复出厂   | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","timestamp":1710000000102,"data":{"reason":"factory_reset"}}` |
+| 手动下线   | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","timestamp":1710000000103,"data":{"reason":"manual"}}`        |
+
+### 3.3 异常断开（LWT 遗嘱）`device/{mac}/will`
+
+| **场景**              | **QoS** | **Retained** | **JSON 格式**                                                                                                      |
+| :------------------ | :------ | :----------- | :--------------------------------------------------------------------------------------------------------------- |
+| Broker 检测到异常断线，自动发布 | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"offline","timestamp":0,"data":{"reason":"mqtt_lwt"}}` |
+
+> 设备连接时注册 LWT，Broker 在设备异常断开时代为发布。设备本身不发送此消息。
+
+### 3.4 心跳 `device/{mac}/heartbeat`
+
+| **场景**       | **QoS** | **Retained** | **JSON 格式**                                                                                                                         |
+| :----------- | :------ | :----------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| 定时心跳（每 30 秒） | 0       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"heartbeat","timestamp":1710000000200,"data":{"uptime":1234,"rssi":-65}}` |
+
+### 3.5 状态上报 `device/{mac}/state`
+
+统一结构：`{type:"state", data:{full, targets}}`
+
+#### 3.5.1 上线全量上报
+
+| **场景**                  | **QoS** | **Retained** | **JSON 格式** |
+| :---------------------- | :------ | :----------- | :---------- |
+| 上线后全量状态（MOS + LED + 舵机） | 1       | true         | 见下方         |
+
+
+```json
+{
+  "device": "B4BFE90CDBA0",
+  "product": "SmartHome-v1",
+  "type": "state",
+  "timestamp": 1710000000300,
+  "data": {
+    "full": true,
+    "targets": {
+      "mos": [
+        { "channel": 0, "params": { "state": 0 } },
+        { "channel": 1, "params": { "state": 1 } },
+        { "channel": 2, "params": { "state": 0 } },
+        { "channel": 3, "params": { "state": 0 } },
+        { "channel": 4, "params": { "state": 0 } },
+        { "channel": 5, "params": { "state": 0 } },
+        { "channel": 6, "params": { "state": 0 } },
+        { "channel": 7, "params": { "state": 0 } }
+      ],
+      "led": [
+        { "channel": 1, "params": { "state": 1, "brightness": 80 } }
+      ],
+      "servo": [
+        { "channel": 1, "params": { "angle": 90 } }
+      ]
+    }
+  }
+}
+```
+
+
+#### 3.5.2 增量状态上报
+
+| **场景**    | **QoS** | **Retained** | **JSON 格式** |
+| :-------- | :------ | :----------- | :---------- |
+| MOS 单通道变化 | 1       | false        | 见下方         |
+| LED 变化    | 1       | false        | 见下方         |
+| 舵机变化      | 1       | false        | 见下方         |
+
+
+```json
+{
+  "device": "B4BFE90CDBA0",
+  "product": "SmartHome-v1",
+  "type": "state",
+  "timestamp": 1710000000301,
+  "data": {
+    "full": false,
+    "targets": {
+      "mos": [
+        { "channel": 1, "params": { "state": 0 } }
+      ]
+    }
+  }
+}
+```
+
+
+#### 3.5.3 OTA 状态上报
+
+| **场景**   | **QoS** | **Retained** | **JSON 格式**                                                                                                                                                                                                |
+| :------- | :------ | :----------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OTA 开始下载 | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000302,"data":{"full":false,"targets":{"ota":[{"params":{"state":"downloading","progress":0,"version":"1.0.30"}}]}}}` |
+| OTA 下载中  | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000303,"data":{"full":false,"targets":{"ota":[{"params":{"state":"downloading","progress":45}}]}}}`                   |
+| OTA 校验中  | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000304,"data":{"full":false,"targets":{"ota":[{"params":{"state":"verifying"}}]}}}`                                   |
+| OTA 刷写中  | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000305,"data":{"full":false,"targets":{"ota":[{"params":{"state":"flashing","progress":60}}]}}}`                      |
+| OTA 成功   | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000306,"data":{"full":false,"targets":{"ota":[{"params":{"state":"success","version":"1.0.30"}}]}}}`                  |
+| OTA 失败   | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000307,"data":{"full":false,"targets":{"ota":[{"params":{"state":"fail","code":2,"message":"md5 mismatch"}}]}}}`      |
+
+#### 3.5.4 配置状态上报（可选）
+
+| **场景**      | **QoS** | **Retained** | **JSON 格式**                                                                                                                                                                                                     |
+| :---------- | :------ | :----------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 配置生效后上报当前配置 | 1       | true         | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"state","timestamp":1710000000308,"data":{"full":false,"targets":{"config":[{"params":{"configVersion":5,"log_level":3,"heartbeat_interval":60}}]}}}` |
+
+### 3.6 指令回执 `device/{mac}/ack`
+
+统一结构：`{type:"ack", data:{commandId, success, ...}}`
+
+| **场景**          | **QoS** | **Retained** | **JSON 格式**                                                                                                                                                                                                                                               |
+| :-------------- | :------ | :----------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 控制指令成功          | 1       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"ack","timestamp":1710000000400,"data":{"commandId":"550e8400-...","success":true,"action":"set","target":"mos","channel":1,"result":{"state":1}}}`                                             |
+| 控制指令失败          | 1       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"ack","timestamp":1710000000401,"data":{"commandId":"550e8400-...","success":false,"error":"CHANNEL_NOT_FOUND","message":"通道 1 不存在"}}`                                                          |
+| 配置 ACK          | 1       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"ack","timestamp":1710000000402,"data":{"commandId":"550e8400-...","success":true,"action":"set","target":"config","result":{"applied":["log_level","heartbeat_interval"],"configVersion":5}}}` |
+| OTA 触发 ACK（已接受） | 1       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"ack","timestamp":1710000000403,"data":{"commandId":"550e8400-...","success":true,"action":"start","target":"ota","result":{"state":"accepted"}}}`                                              |
+
+> **注意**：OTA 的 ACK 只表示“收到触发，准备开始”，不代表“升级完成”。升级结果通过 `state` 上报。
+
+### 3.7 事件上报 `device/{mac}/event`
+
+| **场景**          | **QoS** | **Retained** | **JSON 格式**                                                                                                                                                                |
+| :-------------- | :------ | :----------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MOS 本地按钮触发      | 1       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","timestamp":1710000000500,"data":{"event":"mos_change","channel":1,"state":1,"trigger":"local_button"}}` |
+| 恢复出厂事件          | 1       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"event","timestamp":1710000000501,"data":{"event":"factory_reset"}}`                                             |
+| 错误响应（JSON 解析失败） | 1       | false        | `{"device":"B4BFE90CDBA0","product":"SmartHome-v1","type":"error","timestamp":1710000000502,"data":{"code":2003,"message":"ota missing url field","context":"ota"}}`       |
+
+### 3.8 传感器数据 `device/{mac}/sensor`
+
+| **场景**              | **QoS** | **Retained** | **JSON 格式** |
+| :------------------ | :------ | :----------- | :---------- |
+| 传感器批量数据（满/超时 flush） | 0       | false        | 见下方         |
+
+
+```json
+{
+  "device": "B4BFE90CDBA0",
+  "product": "SmartHome-v1",
+  "type": "sensor_batch",
+  "timestamp": 1710000000600,
+  "data": [
+    {
+      "sensor_id": 1,
+      "sensor_type": "grating_counter",
+      "timestamp": 1710000000590,
+      "value": 100,
+      "unit": "count"
+    },
+    {
+      "sensor_id": 2,
+      "sensor_type": "temperature",
+      "timestamp": 1710000000595,
+      "value": 25.5,
+      "unit": "°C"
+    }
+  ]
+}
+```
+
+
+> 数据链路：从机（光栅计数器）→ RS-485 → GD32 → UART → ESP32 → MQTT。
+> ESP32 负责批量聚合（满 N 条或超时 M 秒）后一次性上报。
+
+### 3.9 注册请求 `/provision/device/{mac}/register`（broker 1884）
+
+| **场景** | **QoS** | **Retained** | **JSON 格式** |
+| :----- | :------ | :----------- | :---------- |
+| 首次注册   | 1       | false        | 见下方         |
+
+
+```json
+{
+  "device": "B4BFE90CDBA0",
+  "product": "SmartHome-v1",
+  "firmware": "1.0.29",
+  "chip": "ESP32",
+  "publicKey": "-----BEGIN PUBLIC KEY-----...",
+  "nonce": "abc123",
+  "timestamp": 1710000000700
+}
+```
+
+
+---
+
+## 四、字段说明
+
+### 4.1 下行指令字段
+
+| **字段**      | **类型** | **必填** | **说明**                                               |
+| :---------- | :----- | :----- | :--------------------------------------------------- |
+| `commandId` | string | 是      | 指令唯一 ID（UUID），用于 ACK 匹配                              |
+| `action`    | string | 是      | `set` / `get` / `toggle` / `start` / `reset`         |
+| `target`    | string | 是      | `mos` / `led` / `servo` / `relay` / `ota` / `config` |
+| `channel`   | int    | 否      | 通道号，`0` 表示全部；无通道概念时可省略                               |
+| `params`    | object | 否      | 动作参数，`set` / `start` 时必填                             |
+| `timestamp` | long   | 是      | 毫秒时间戳                                                |
+
+### 4.2 上行通用字段
+
+| **字段**      | **类型** | **必填** | **说明**                                                                                    |
+| :---------- | :----- | :----- | :---------------------------------------------------------------------------------------- |
+| `device`    | string | 是      | 设备 MAC                                                                                    |
+| `product`   | string | 是      | 产品型号                                                                                      |
+| `type`      | string | 是      | `online` / `offline` / `heartbeat` / `state` / `ack` / `event` / `error` / `sensor_batch` |
+| `timestamp` | long   | 是      | 毫秒时间戳                                                                                     |
+| `data`      | object | 是      | 具体内容，随 `type` 变化                                                                          |
+
+### 4.3 state 内部字段
+
+| **字段**                     | **类型**  | **说明**                                                   |
+| :------------------------- | :------ | :------------------------------------------------------- |
+| `full`                     | boolean | `true`=全量上报，`false`=增量上报                                 |
+| `targets`                  | object  | key 为部件名（`mos`/`led`/`servo`/`ota`/`config`），value 为通道数组 |
+| `targets.{name}[].channel` | int     | 通道号                                                      |
+| `targets.{name}[].params`  | object  | 该通道的状态参数                                                 |
+
+### 4.4 ack 内部字段
+
+| **字段**                          | **类型**  | **说明**            |
+| :------------------------------ | :------ | :---------------- |
+| `commandId`                     | string  | 对应下行指令的 commandId |
+| `success`                       | boolean | 是否成功              |
+| `action` / `target` / `channel` | -       | 回显指令信息            |
+| `result`                        | object  | 成功时的结果            |
+| `error` / `message`             | string  | 失败时的错误码和描述        |
+
+### 4.5 event 内部字段
+
+| **字段**             | **类型** | **说明**                                     |
+| :----------------- | :----- | :----------------------------------------- |
+| `event`            | string | 事件名，如 `mos_change` / `factory_reset`       |
+| `trigger`          | string | 触发源：`local_button` / `remote` / `schedule` |
+| `code` / `message` | -      | `type=error` 时的错误码和描述                      |
+| `context`          | string | 错误发生的上下文模块                                 |
+
+### 4.6 sensor 内部字段
+
+| **字段**        | **类型** | **说明**                                         |
+| :------------ | :----- | :--------------------------------------------- |
+| `sensor_id`   | int    | 传感器通道号                                         |
+| `sensor_type` | string | `grating_counter` / `temperature` / `humidity` |
+| `timestamp`   | long   | 该数据点的采集时间（非上报时间）                               |
+| `value`       | number | 数值                                             |
+| `unit`        | string | 单位                                             |
+
+---
+
+## 五、错误码规范
+
+| **错误码**                | **含义**         |
+| :--------------------- | :------------- |
+| `INVALID_PAYLOAD`      | JSON 格式错误或字段缺失 |
+| `UNKNOWN_ACTION`       | action 不支持     |
+| `UNKNOWN_TARGET`       | target 不支持     |
+| `CHANNEL_NOT_FOUND`    | 通道不存在          |
+| `CHANNEL_OUT_OF_RANGE` | 通道号超出范围        |
+| `PARAM_MISSING`        | 缺少必要参数         |
+| `PARAM_INVALID`        | 参数值非法          |
+| `DEVICE_BUSY`          | 设备忙，稍后重试       |
+| `EXECUTE_FAILED`       | 执行失败（硬件层）      |
+| `TIMEOUT`              | 执行超时           |
+
+### OTA 错误码
+
+| **code** | **含义**   |
+| :------- | :------- |
+| 1        | URL 不可达  |
+| 2        | MD5 校验失败 |
+| 3        | 空间不足     |
+| 4        | 版本不兼容    |
+| 5        | 刷写失败     |
+| 6        | 超时       |
+
+---
+
+## 六、QoS 与 Retained 策略
+
+| **Topic**                                 | **QoS** | **Retained** | **原因**                          |
+| :---------------------------------------- | :------ | :----------- | :------------------------------ |
+| `device/{mac}/command`                    | 1       | false        | 指令必须送达；retained 会导致设备重连收到旧指令，危险 |
+| `device/{mac}/config`                     | 1       | false        | 同上                              |
+| `device/{mac}/ota`                        | 1       | false        | 同上                              |
+| `$broadcast/ota`                          | 1       | false        | 同上                              |
+| `device/{mac}/online`                     | 1       | true         | 在线状态需快速恢复                       |
+| `device/{mac}/offline`                    | 1       | true         | 离线状态需快速恢复                       |
+| `device/{mac}/will`                       | 1       | true         | LWT，需快速恢复                       |
+| `device/{mac}/heartbeat`                  | 0       | false        | 高频，丢一两条无所谓                      |
+| `device/{mac}/state`                      | 1       | true         | 状态需快速恢复                         |
+| `device/{mac}/ack`                        | 1       | false        | 回执即时消费，无 retained 意义            |
+| `device/{mac}/event`                      | 1       | false        | 事件即时消费                          |
+| `device/{mac}/sensor`                     | 0       | false        | 批量数据，高频                         |
+| `/provision/device/{mac}/register`        | 1       | false        | 一次性                             |
+| `/provision/device/{mac}/config/response` | 1       | false        | 一次性                             |
+
+---
+
+## 七、设备在线/离线判断
+
+### 7.1 四种判断机制
+
+| **机制** | **Topic**                | **触发方**   | **延迟** | **说明**                            |
+| :----- | :----------------------- | :-------- | :----- | :-------------------------------- |
+| 上线通知   | `device/{mac}/online`    | 设备主动      | 秒级     | 连接成功后上报                           |
+| 主动离线   | `device/{mac}/offline`   | 设备主动      | 秒级     | 正常关机/重启/恢复出厂                      |
+| LWT 遗嘱 | `device/{mac}/will`      | Broker 自动 | 秒级     | 异常断开                              |
+| 心跳超时   | `device/{mac}/heartbeat` | 后端扫描      | 分钟级    | 兜底，`now - lastHeartbeat > 3 × 间隔` |
+
+### 7.2 离线原因
+
+| **reason**          | **含义** | **来源**     |
+| :------------------ | :----- | :--------- |
+| `shutdown`          | 正常关机   | 设备主动       |
+| `factory_reset`     | 恢复出厂   | 设备主动       |
+| `manual`            | 手动下线   | 设备主动       |
+| `mqtt_lwt`          | 异常断开   | Broker LWT |
+| `heartbeat_timeout` | 心跳超时   | 后端扫描       |
+
+### 7.3 状态机
+
+
+```
+                  ┌─────────────┐
+                  │   UNKNOWN   │  初始状态（从未上线）
+                  └──────┬──────┘
+                         │ 收到 online
+                         ▼
+                  ┌─────────────┐
+        ┌────────►│   ONLINE    │
+        │         └──────┬──────┘
+        │                │
+   收到 online      ┌────┼────┬────────────┐
+        │           │    │    │            │
+        │      收到 offline will    心跳超时
+        │           │    │    │            │
+        │           ▼    ▼    ▼            ▼
+        │         ┌──────────────────────┐
+        └─────────│      OFFLINE         │
+                  └──────────────────────┘
+```
+
+
+---
+
+## 八、指令生命周期状态机
+
+
+```
+┌─────────────┐
+│   PENDING   │  后端入库
+└──────┬──────┘
+       │ MQTT 发布
+       ▼
+┌─────────────┐
+│    SENT     │  已发送，等待 ACK
+└──────┬──────┘
+       │
+  ┌────┼────┐
+  │    │    │
+收到  收到  超时
+成功  失败  未收
+ACK   ACK   ACK
+  │    │    │
+  ▼    ▼    ▼
+┌────┐┌────┐┌────────┐
+│SUC ││FAIL││TIMEOUT │
+│CESS││    ││        │
+└────┘└────┘└───┬────┘
+                │
+           retryCount < maxRetry?
+                │
+           ┌────┴────┐
+           │ 是      │ 否
+           ▼         ▼
+       重新 SENT   标记 FAILED
+```
+
+
+**幂等要求**：设备必须用 `commandId` 去重，同 ID 只执行一次。
+
+---
+
+## 九、OTA 完整流程
+
+
+```
+后端                                  设备
+  │                                     │
+  │ 1. device/{mac}/ota                 │
+  │    {commandId, action:start,        │
+  │     target:ota, params:{url,...}}   │
+  │ ──────────────────────────────────► │
+  │                                     │
+  │ 2. device/{mac}/ack                 │
+  │    {commandId, success:true,        │
+  │     result:{state:"accepted"}}      │
+  │ ◄────────────────────────────────── │
+  │                                     │
+  │ 3. device/{mac}/state               │
+  │    {targets:{ota:[{params:          │
+  │     {state:"downloading",           │
+  │      progress:0}}]}}                │
+  │ ◄────────────────────────────────── │
+  │                                     │
+  │ 4. device/{mac}/state               │
+  │    {targets:{ota:[{params:          │
+  │     {state:"downloading",           │
+  │      progress:45}}]}}               │
+  │ ◄────────────────────────────────── │
+  │                                     │
+  │ 5. device/{mac}/state               │
+  │    {targets:{ota:[{params:          │
+  │     {state:"flashing"}}]}}          │
+  │ ◄────────────────────────────────── │
+  │                                     │
+  │         设备重启，断线重连           │
+  │                                     │
+  │ 6. device/{mac}/online              │
+  │ ◄────────────────────────────────── │
+  │                                     │
+  │ 7. device/{mac}/state               │
+  │    {targets:{ota:[{params:          │
+  │     {state:"success",               │
+  │      version:"1.0.30"}}]}}          │
+  │ ◄────────────────────────────────── │
+```
+
+
+**广播 OTA 防雪崩**：
+
+- 分批广播（按 10% 灰度）
+- 设备随机延迟 0\~N 秒再下载
+- payload 里带 `rollout.percent`，设备根据 MAC 哈希决定是否升级
+
+---
+
+## 十、注册完整流程
+
+
+```
+设备（无凭据）                          Broker 1884
+  │                                       │
+  │ 1. /provision/device/{mac}/register  │
+  │    {device, product, firmware,       │
+  │     publicKey, nonce}                │
+  │ ────────────────────────────────────►│
+  │                                       │
+  │ 2. /provision/device/{mac}/           │
+  │    config/response                    │
+  │    {mqtt:{host,port,clientId,        │
+  │     username,password},               │
+  │     topics:{...}, config:{...}}       │
+  │ ◄────────────────────────────────────│
+  │                                       │
+  │ 3. 用新凭据连接 Broker 1883           │
+  │ ────────────────────────────────────►│
+  │                                       │
+  │ 4. device/{mac}/online                │
+  │ ────────────────────────────────────►│
+  │                                       │
+```
+
+
+---
+
+## 十一、命名变化对照
+
+| **旧 Topic**                               | **新 Topic**              | **变化**               |
+| :---------------------------------------- | :----------------------- | :------------------- |
+| `device/{mac}/control`                    | `device/{mac}/command`   | 改名 + 新结构 + commandId |
+| `device/{mac}/heart`                      | `device/{mac}/heartbeat` | 改名                   |
+| `device/{mac}/status`（上线）                 | `device/{mac}/online`    | 拆分                   |
+| `device/{mac}/status`（离线）                 | `device/{mac}/offline`   | 拆分                   |
+| `device/{mac}/will`                       | `device/{mac}/will`      | 保留                   |
+| `device/{mac}/mos_state`                  | `device/{mac}/state`     | 合并                   |
+| `device/{mac}/state`                      | `device/{mac}/state`     | 合并                   |
+| —                                         | `device/{mac}/ack`       | 新增                   |
+| `device/{mac}/event`                      | `device/{mac}/event`     | 结构统一                 |
+| `device/{mac}/sensor`                     | `device/{mac}/sensor`    | 结构统一                 |
+| `device/{mac}/ota`                        | `device/{mac}/ota`       | 新结构 + commandId      |
+| `device/{mac}/config`                     | `device/{mac}/config`    | 新结构 + commandId      |
+| `$broadcast/ota`                          | `$broadcast/ota`         | 不变                   |
+| `/provision/device/{mac}/register`        | 同                        | 不变                   |
+| `/provision/device/{mac}/config/response` | 同                        | 不变                   |
+
+---
+
+## 十二、Topic 全景图
+
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Broker 1884（provisioning）                │
+│  /provision/device/{mac}/register          设备 → 服务器      │
+│  /provision/device/{mac}/config/response   服务器 → 设备      │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│                    Broker 1883（运行时）                      │
+│                                                              │
+│  下行（服务器 → 设备）                                        │
+│    device/{mac}/command      控制指令                         │
+│    device/{mac}/config       配置下发                         │
+│    device/{mac}/ota          OTA 触发（点对点）               │
+│    $broadcast/ota            OTA 触发（广播）                 │
+│                                                              │
+│  上行（设备 → 服务器）                                        │
+│    device/{mac}/online       上线                             │
+│    device/{mac}/offline      主动离线                         │
+│    device/{mac}/will         LWT 异常断开                     │
+│    device/{mac}/heartbeat    心跳                             │
+│    device/{mac}/state        状态上报（MOS/LED/舵机/OTA/配置）│
+│    device/{mac}/ack          指令回执                         │
+│    device/{mac}/event        事件/错误                        │
+│    device/{mac}/sensor       传感器批量数据                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+
+---
+
+## 十三、后端订阅配置
+
+
+```yaml
+mqtt:
+  topics:
+    - device/+/online
+    - device/+/offline
+    - device/+/will
+    - device/+/heartbeat
+    - device/+/state
+    - device/+/ack
+    - device/+/event
+    - device/+/sensor
+  qos:
+    - 1
+    - 1
+    - 1
+    - 0
+    - 1
+    - 1
+    - 1
+    - 0
+```
+
+
+---
+
+## 十四、Handler 划分
+
+| **Handler**               | **匹配 Topic**                         | **职责**              |
+| :------------------------ | :----------------------------------- | :------------------ |
+| `OnlineMessageHandler`    | `device/+/online`                    | 标记在线，记录上线时间         |
+| `OfflineMessageHandler`   | `device/+/offline` 和 `device/+/will` | 标记离线，记录原因           |
+| `HeartbeatMessageHandler` | `device/+/heartbeat`                 | 更新最后心跳时间            |
+| `StateMessageHandler`     | `device/+/state`                     | 更新设备状态（全量/增量）       |
+| `AckMessageHandler`       | `device/+/ack`                       | 匹配 commandId，更新指令状态 |
+| `EventMessageHandler`     | `device/+/event`                     | 处理事件和错误             |
+| `SensorMessageHandler`    | `device/+/sensor`                    | 存储传感器数据             |
+
+---
+
+## 十五、核心设计原则
+
+| **原则**       | **说明**                                                   |
+| :----------- | :------------------------------------------------------- |
+| 一个语义一个 topic | `command` / `ack` / `state` / `event` / `heartbeat` 各司其职 |
+| 上行统一包装       | `{device, product, type, timestamp, data}`               |
+| 下行统一结构       | `{commandId, action, target, params, timestamp}`         |
+| 状态统一上报       | 所有部件状态走 `state` + `targets`                              |
+| 指令闭环         | `commandId` + `ack` + 超时重试 + 幂等                          |
+| 扩展零成本        | 新增 LED/舵机/继电器只加 `targets` key                            |
+| 在线三重保障       | `online` + `offline` + `will` + 心跳超时兜底                   |
+| 注册独立         | provisioning broker（1884）+ `/provision/*` 命名空间           |
+
