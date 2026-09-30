@@ -939,11 +939,15 @@ OTA `state` 取值：
 {
   "device": "B4BFE90CDBA0",
   "product": "SmartHome-v1",
-  "firmware": "1.0.29",
-  "chip": "ESP32",
-  "hardware_version": "V1.0",
-  "nonce": "abc123",
-  "timestamp": 1710000000700
+  "type": "register",
+  "timestamp": 1710000000700,
+  "data": {
+    "firmware": "1.0.29",
+    "chip": "ESP32",
+    "hardware_version": "V1.0",
+    "nonce": "550e8400e29b41d4a716446655440000",
+    "pubkey": "-----BEGIN PUBLIC KEY-----\nMFkwEwYH...\n-----END PUBLIC KEY-----"
+  }
 }
 ```
 
