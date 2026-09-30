@@ -957,7 +957,6 @@ OTA `state` 取值：
 **Topic**：`/provision/device/{mac}/config`
 
 ```json
-
 {
   "device": "B4BFE90CDBA0",
   "success": true,
@@ -969,9 +968,20 @@ OTA `state` 取值：
     "password": "xxxxx",
     "keepAlive": 60
   },
+  "will": {
+    "topic": "device/B4BFE90CDBA0/will",
+    "qos": 1,
+    "retain": true,
+    "payload": {
+      "device": "B4BFE90CDBA0",
+      "product": "SmartHome-v1",
+      "type": "offline",
+      "data": { "reason": "mqtt_lwt" }
+    }
+  },
   "config": {
-    "log_level": 3,
-    "heartbeat_interval": 30
+    "heartbeat_interval": 30,
+    "sensor_batch_size": 32
   },
   "timestamp": 1710000000701
 }
