@@ -355,32 +355,6 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 | **攻击者冒充** | **不一致** | **拒绝（DEVICE_ALREADY_REGISTERED）** |
 | 设备换密钥对 | 不一致 | 拒绝（需管理员介入清空 pubkey） |
 
-**关键实现**：
-
-```java
-private void saveDeviceInfo(RegisterRequest request) {
-    DeviceInfo device = deviceInfoService.getOrCreateDevice(request.getDeviceId());
-
-    // ★ pubkey 校验：已注册设备的 pubkey 必须一致
-    if (device.getPubkey() != null
-            && !device.getPubkey().equals(request.getPubkey())) {
-        throw new IllegalStateException("设备已注册，pubkey 不匹配");
-    }
-
-    // 首次注册 → 保存 pubkey
-    if (device.getPubkey() == null) {
-        device.setPubkey(request.getPubkey());
-        device.setRegisteredAt(LocalDateTime.now());
-    }
-
-    device.setProduct(request.getProduct());
-    device.setFirmware(request.getFirmware());
-    device.setOnline(0);
-    device.setOfflineReason(null);
-    device.setLastUpdateTime(LocalDateTime.now());
-    deviceInfoService.updateById(device);
-}
-```
 
 **没有 pubkey 校验的后果**：
 
