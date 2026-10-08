@@ -146,27 +146,874 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 
 ### 5.2 MQTT 双阶段注册
 
-设备首次启动时 `provisioned=0`，进入**注册阶段**：
+设备首次启动时 `provisioned=0`，进入**注册阶段**,本地没有任何 MQTT 凭据，需要先向服务器"报到"，换取正式 Broker 的凭据：
 
+
+| 项 | 说明 |
+|---|---|
+| 触发时机 | 首次上电 / 恢复出厂 / MQTT 凭据失效 |
+| Broker | 1884（注册专用，与运行时 1883 隔离） |
+| Topic | `/provision/device/{mac}/register`（设备→服务器）、`/provision/device/{mac}/config`（服务器→设备） |
+| QoS | 1 |
+| 安全 | 非对称加密（ECDSA）+ nonce 防重放 + timestamp 时间窗口 |
+
+### 5.3 安全设计
+
+注册流程采用**四重安全机制**，防止伪造和重放：
+
+| 机制 | 作用 | 位置 |
+|---|---|---|
+| **pubkey（公钥）** | 设备身份标识，服务器用它验签 | 设备首启生成，随请求发送 |
+| **signature（签名）** | 证明"pubkey 属于这台设备" | 设备用私钥签名，随请求发送 |
+| **nonce（随机数）** | 防重放，每次注册唯一 | 设备每次生成 UUID，服务器 Redis 记录 5 分钟 |
+| **timestamp（时间戳）** | 防过期请求 | 服务器校验 ±5 分钟窗口 |
+
+**四者的关系**：
 
 ```
-┌─ 注册阶段（Broker 1884）─────────────────────────────────────┐
-│                                                               │
-│  设备请求 → /provision/device/{MAC}/register                  │
-│                                                               │
-│  服务器响应 → /provision/device/{MAC}/config                  │
-│   返回正式 broker 地址/凭据                                    │
-│                                                               │
-│  收到后：                                                     │
-│   1. 保存新配置到 NVS                                          │
-│   2. 断开 broker 1884                                          │
-│   3. 连接 broker 1883（正式）                                  │
-│   4. 标记 provisioned = true                                   │
-└───────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ 设备首次启动                                       │
+│   1. 生成 ECDSA P-256 密钥对                       │
+│      ├─ 私钥 → NVS/eFuse（永不出设备）             │
+│      └─ 公钥 → 待用                                │
+└──────────────────────────────────────────────────┘
+                    ↓
+┌──────────────────────────────────────────────────┐
+│ 每次注册                                           │
+│   1. 生成 nonce（随机 UUID）                       │
+│   2. 拼待签数据：                                  │
+│      signData = {device}|{timestamp}|{nonce}      │
+│   3. 用私钥签名：                                  │
+│      signature = ECDSA_Sign(私钥, signData)       │
+│   4. 发请求：{..., nonce, pubkey, signature}      │
+└──────────────────────────────────────────────────┘
+                    ↓
+┌──────────────────────────────────────────────────┐
+│ 服务器验证                                         │
+│   1. 校验 device 格式（12 位大写十六进制）         │
+│   2. 校验 timestamp（±5 分钟）                     │
+│   3. 校验 nonce（Redis，防重放）                   │
+│   4. 重拼 signData，用 pubkey 验 signature         │
+│   5. 校验 pubkey 与数据库记录一致（防冒充）         │
+│   6. 通过 → 分配 MQTT 凭据                         │
+└──────────────────────────────────────────────────┘
 ```
 
+**关键认识**：
 
-### 5.3 OTA 远程升级
+- **私钥不出设备** → 身份不可伪造
+- **nonce 唯一** → 请求不可重放
+- **pubkey 绑定数据库** → 已注册设备不可被覆盖
+
+### 1.3 注册请求
+
+**Topic**：`/provision/device/{mac}/register`
+
+**Payload**：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "product": "SmartHome-v1",
+  "type": "register",
+  "timestamp": 1791444733387,
+  "data": {
+    "firmware": "1.0.29",
+    "chip": "ESP32",
+    "hardware_version": "V1.0",
+    "nonce": "900593f8-3137-4739-a3b5-67ebb74c6071",
+    "pubkey": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEuZS7IU8D6F+ImzIQlx9vfwEuUn63\nTaPRSMIQE7OTVT22F2CKjF7HGJkV7F1svV6CWoWHW/dKbJ3VVWpcW0e6gA==\n-----END PUBLIC KEY-----\n",
+    "signature": "MEUCIQDeiopSexr8PL+speElv24ePAPGmryds9AK+rhg0DkbkwIgSEmrJygUA3I84v4ENj65+NuvhAXYtwXoKknL2HcbxVA="
+  }
+}
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `device` | string | 是 | 设备 MAC（12 位大写十六进制，无冒号） |
+| `product` | string | 是 | 产品型号 |
+| `type` | string | 是 | 固定 `"register"` |
+| `timestamp` | long | 是 | 毫秒时间戳（服务器校验 ±5 分钟） |
+| `data.firmware` | string | 是 | 固件版本 |
+| `data.chip` | string | 否 | 芯片型号（ESP32） |
+| `data.hardware_version` | string | 否 | 硬件版本 |
+| `data.nonce` | string | 是 | 随机 UUID，每次注册唯一 |
+| `data.pubkey` | string | 是 | PEM 格式公钥（ECDSA P-256） |
+| `data.signature` | string | 是 | Base64 编码的签名 |
+
+**三个关键字段的生成方式**：
+
+| 字段 | 谁生成 | 何时生成 | 用什么 |
+|---|---|---|---|
+| `nonce` | 设备 | 每次注册 | `esp_random()` 生成 UUID |
+| `pubkey` | 设备 | **首次启动** | mbedTLS 生成 P-256 密钥对 |
+| `signature` | 设备 | 每次注册 | mbedTLS 用私钥签名 `{device}\|{timestamp}\|{nonce}` |
+
+### 1.4 注册响应
+
+**Topic**：`/provision/device/{mac}/config`
+
+**成功响应**：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "success": true,
+  "mqtt": {
+    "host": "192.168.6.6",
+    "port": 1883,
+    "clientId": "device-B4BFE90CDBA1",
+    "username": "dev_B4BFE90CDBA1",
+    "password": "e2e1c28ef5d9489b",
+    "keepAlive": 60
+  },
+  "will": {
+    "topic": "device/B4BFE90CDBA1/will",
+    "qos": 1,
+    "retain": true,
+    "payload": {
+      "device": "B4BFE90CDBA1",
+      "product": "SmartHome-v1",
+      "type": "offline",
+      "timestamp": 0,
+      "data": { "reason": "mqtt_lwt" }
+    }
+  },
+  "config": {
+    "heartbeat_interval": 30,
+    "sensor_batch_size": 32
+  },
+  "timestamp": 1791444746640
+}
+```
+
+**失败响应**：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "success": false,
+  "error": "INVALID_SIGNATURE",
+  "message": "签名验证失败",
+  "timestamp": 1791444746640
+}
+```
+
+**响应字段说明**：
+
+| 字段 | 说明 |
+|---|---|
+| `mqtt.host` / `port` | **运行时 Broker** 地址（1883） |
+| `mqtt.clientId` | 设备客户端 ID（`device-{mac}`） |
+| `mqtt.username` | 用户名（`dev_{mac}`） |
+| `mqtt.password` | 密码（16 位随机字符串） |
+| `mqtt.keepAlive` | 保活间隔（秒） |
+| `will.topic` / `qos` / `retain` | LWT 遗嘱配置 |
+| `will.payload` | 遗嘱内容（Broker 在设备异常断开时自动发布） |
+| `config.heartbeat_interval` | 心跳间隔（秒） |
+| `config.sensor_batch_size` | 传感器批量上报阈值 |
+
+### 1.5 设备切换流程
+
+设备收到成功响应后：
+
+```
+1. 保存 MQTT 凭据到 NVS
+   ├─ broker 地址：192.168.6.6:1883
+   ├─ clientId / username / password
+   ├─ will 遗嘱配置
+   └─ config 配置
+
+2. 断开 Broker 1884
+
+3. 用新凭据连接 Broker 1883
+
+4. 连接成功 → 发 device/{mac}/online
+
+5. 标记 provisioned = true
+```
+
+**注意**：
+
+- **注册成功设备不需要回 ACK**（注册是"请求-响应"模式）
+- `success != true` 时设备重试 10 次，每次等待 30 秒
+- 连续失败进入错误状态（LED 快闪提示）
+
+### 1.6 重复注册策略
+
+同一台设备可能因重启、网络抖动、固件升级等原因**多次注册**。
+
+**处理策略**：
+
+| 场景 | pubkey 是否一致 | 服务器行为 |
+|---|---|---|
+| 首次注册 | — | 保存 pubkey，分配新凭据 |
+| 同设备重启 | 一致 | 允许，换新密码（旧密码失效） |
+| 网络抖动重试 | 一致 | 允许，nonce 不同即可 |
+| **攻击者冒充** | **不一致** | **拒绝（DEVICE_ALREADY_REGISTERED）** |
+| 设备换密钥对 | 不一致 | 拒绝（需管理员介入清空 pubkey） |
+
+**关键实现**：
+
+```java
+private void saveDeviceInfo(RegisterRequest request) {
+    DeviceInfo device = deviceInfoService.getOrCreateDevice(request.getDeviceId());
+
+    // ★ pubkey 校验：已注册设备的 pubkey 必须一致
+    if (device.getPubkey() != null
+            && !device.getPubkey().equals(request.getPubkey())) {
+        throw new IllegalStateException("设备已注册，pubkey 不匹配");
+    }
+
+    // 首次注册 → 保存 pubkey
+    if (device.getPubkey() == null) {
+        device.setPubkey(request.getPubkey());
+        device.setRegisteredAt(LocalDateTime.now());
+    }
+
+    device.setProduct(request.getProduct());
+    device.setFirmware(request.getFirmware());
+    device.setOnline(0);
+    device.setOfflineReason(null);
+    device.setLastUpdateTime(LocalDateTime.now());
+    deviceInfoService.updateById(device);
+}
+```
+
+**没有 pubkey 校验的后果**：
+
+攻击者用自己的密钥对注册同一 MAC → 验签通过（用攻击者自己的 pubkey）→ 覆盖数据库 → 拿到 MQTT 凭据 → **冒充成功**。
+
+**加了 pubkey 校验**：数据库里已有 pubkey 且与请求不一致 → 直接拒绝 → **无法冒充**。
+
+### 1.7 数据库落地
+
+注册成功后 `device_info` 表的字段：
+
+| 字段 | 来源 | 说明 |
+|---|---|---|
+| `device_id` | 请求 | 设备 MAC |
+| `product` | 请求 | 产品型号 |
+| `firmware` | 请求 | 固件版本 |
+| `pubkey` | 请求 | **首次注册时写入** |
+| `registered_at` | 服务器 | 最近注册时间 |
+| `online` | 服务器 | 注册时=0 |
+| `last_update_time` | 服务器 | 当前时间 |
+
+**说明**：
+
+- `device_name` / `location` **不在注册时填**，由管理员后台手动设置
+- `capabilities` / `current_state` 在**上线时**上报，不在注册时
+- `offline_reason` / `last_offline_time` 在**离线时**更新
+
+### 1.8 错误码
+
+| 错误码 | 含义 | 设备处理 |
+|---|---|---|
+| `INVALID_DEVICE_ID` | MAC 格式不对 | 检查固件 |
+| `PARAM_MISSING` | product 为空 | 检查固件 |
+| `INVALID_TIMESTAMP` | 时间戳超窗口 | **同步 NTP 后重试** |
+| `REPLAY_ATTACK` | nonce 重复 | **换新 nonce 重试** |
+| `INVALID_SIGNATURE` | 签名验证失败 | 检查密钥对 |
+| `DEVICE_ALREADY_REGISTERED` | pubkey 不匹配（被冒充） | 停止重试，人工介入 |
+| `SERVER_ERROR` | 服务器异常 | 等 30 秒重试 |
+
+### 1.9 完整时序图
+
+```
+┌─────────────┐                              ┌─────────────┐
+│   ESP32 设备  │                              │   服务器     │
+└──────┬──────┘                              └──────┬──────┘
+       │                                            │
+       │ ① 首次启动，检查本地 provisioned              │
+       │    未注册 → 生成 ECDSA 密钥对                 │
+       │    私钥存 NVS，公钥待用                       │
+       │                                            │
+       │ ② 连接 Broker 1884                          │
+       │ ──────────────────────────────────────────►│
+       │                                            │
+       │ ③ 生成 nonce，拼 signData，用私钥签名          │
+       │    发布注册请求                              │
+       │    topic: /provision/device/{mac}/register │
+       │ ──────────────────────────────────────────►│
+       │                                            │
+       │                                      ④ 服务器处理：
+       │                                        a. 校验 MAC 格式
+       │                                        b. 校验 timestamp
+       │                                        c. 校验 nonce（Redis）
+       │                                        d. 用 pubkey 验签名
+       │                                        e. 校验 pubkey 一致性 ★
+       │                                        f. 保存设备 + pubkey
+       │                                        g. 生成 MQTT 凭据
+       │                                            │
+       │ ⑤ 收到响应                                   │
+       │    topic: /provision/device/{mac}/config   │
+       │    {success, mqtt:{...}, will:{...},        │
+       │     config:{...}}                           │
+       │ ◄──────────────────────────────────────────│
+       │                                            │
+       │ ⑥ 保存凭据到 NVS                             │
+       │    断开 1884                                │
+       │                                            │
+       │ ⑦ 连接运行时 Broker 1883                     │
+       │ ──────────────────────────────────────────►│
+       │                                            │
+       │ ⑧ 发 online，开始心跳                         │
+       │ ──────────────────────────────────────────►│
+       │                                            │
+```
+
+---
+
+## 二、OTA 远程升级
+
+### 2.1 业务概述
+
+OTA（Over-The-Air）通过 MQTT 远程触发设备升级固件。
+
+| 项 | 说明 |
+|---|---|
+| 触发方式 | MQTT 点对点 / MQTT 广播 / HTTP（局域网备用） |
+| 下发 Topic | `device/{mac}/command`（`target=ota`） |
+| ACK Topic | `device/{mac}/ack` |
+| 进度 Topic | `device/{mac}/state`（`targets.ota`） |
+| 数据库 | 复用 `device_command` + `device_info.ota_*` |
+
+**核心设计**：**OTA 就是一条特殊的指令（`action=start` + `target=ota`）**，复用现有的指令下发、ACK 匹配、超时重试机制。
+
+### 2.2 Topic 与 QoS
+
+| 用途 | Topic | QoS | Retained |
+|---|---|---|---|
+| 下发 OTA 触发 | `device/{mac}/command` | 1 | false |
+| 广播 OTA 触发 | `$broadcast/command` | 1 | false |
+| 设备回 ACK | `device/{mac}/ack` | 1 | false |
+| 设备上报进度/结果 | `device/{mac}/state` | 1 | true |
+
+### 2.3 OTA 触发指令
+
+**Topic**：`device/{mac}/command`
+
+**Payload**：
+
+```json
+{
+  "commandId": "550e8400-e29b-41d4-a716-446655440000",
+  "action": "start",
+  "target": "ota",
+  "params": {
+    "url": "http://192.168.6.6:8000/firmware_1.0.30.bin",
+    "version": "1.0.30",
+    "md5": "abc123def456",
+    "size": 1048576
+  },
+  "timestamp": 1791444733387
+}
+```
+
+**字段说明**：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `commandId` | 是 | UUID，用于 ACK 匹配 |
+| `action` | 是 | 固定 `"start"` |
+| `target` | 是 | 固定 `"ota"` |
+| `params.url` | 是 | 固件下载地址 |
+| `params.version` | 是 | 目标版本号 |
+| `params.md5` | 否 | 文件 MD5（校验用） |
+| `params.size` | 否 | 文件大小（字节） |
+| `timestamp` | 是 | 毫秒时间戳 |
+
+**注意**：OTA 指令**无 `channel` 字段**（不需要通道概念）。
+
+### 2.4 服务器处理流程
+
+```
+┌──────────────────────────────────────────────────────┐
+│ 管理员调 HTTP: POST /api/ota/start                    │
+│   {deviceId, url, version, md5, size, operator}      │
+└──────────────────────┬───────────────────────────────┘
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│ DeviceOtaService.startOta()                          │
+│   1. 校验设备存在                                     │
+│   2. 组装 params {url, version, md5, size}           │
+│   3. 调 deviceCommandService.prepareCommand()        │
+└──────────────────────┬───────────────────────────────┘
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│ DeviceCommandServiceImpl.prepareCommand()            │
+│   1. 生成 commandId                                   │
+│   2. 入库：device_command.status = PENDING            │
+│   3. 立即尝试 MQTT 下发（即时下发）                    │
+│      ├─ 成功 → status = SENT                          │
+│      └─ 失败 → 保持 PENDING，等定时器重试              │
+└──────────────────────┬───────────────────────────────┘
+                       ▼
+                  MQTT Broker 1883
+                       │
+                       │ device/{mac}/command
+                       ▼
+                    设备端
+```
+
+**两个关键点**：
+
+1. **即时下发**：`prepareCommand` 里立即尝试发 MQTT，延迟毫秒级
+2. **定时器兜底**：`CommandScheduler` 每 5 秒扫描 `status=PENDING` 的指令重试
+
+**OTA 指令的 `expireTime`**：
+
+```java
+// OTA 是长流程，过期时间要设长
+int expireSeconds = 600;   // 默认 10 分钟
+cmd.setExpireTime(now.plusSeconds(expireSeconds));
+```
+
+### 2.5 设备回 ACK
+
+**Topic**：`device/{mac}/ack`
+
+**Payload**：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "product": "SmartHome-v1",
+  "type": "ack",
+  "timestamp": 1791444734000,
+  "data": {
+    "commandId": "550e8400-e29b-41d4-a716-446655440000",
+    "success": true,
+    "action": "start",
+    "target": "ota",
+    "result": {
+      "state": "accepted"
+    }
+  }
+}
+```
+
+**关键认识**：**OTA 的 ACK 只表示"收到触发，准备开始"，不代表"升级完成"。**
+
+**升级结果通过 `state` 上报。**
+
+**服务器处理**：
+
+```
+AckMessageHandler 收到：
+  1. 解析 commandId
+  2. 调 deviceCommandService.handleAck(commandId, success, ...)
+  3. 更新 device_command.status = SUCCESS / FAILED
+```
+
+### 2.6 设备上报进度
+
+**Topic**：`device/{mac}/state`
+
+**下载中**：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "product": "SmartHome-v1",
+  "type": "state",
+  "timestamp": 1791444735000,
+  "data": {
+    "full": false,
+    "targets": {
+      "ota": [
+        {
+          "params": {
+            "state": "downloading",
+            "progress": 45,
+            "version": "1.0.30"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**刷写中**：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "product": "SmartHome-v1",
+  "type": "state",
+  "timestamp": 1791444740000,
+  "data": {
+    "full": false,
+    "targets": {
+      "ota": [
+        { "params": { "state": "flashing", "progress": 80 } }
+      ]
+    }
+  }
+}
+```
+
+**成功**（重启后上报）：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "product": "SmartHome-v1",
+  "type": "state",
+  "timestamp": 1791444800000,
+  "data": {
+    "full": false,
+    "targets": {
+      "ota": [
+        { "params": { "state": "success", "version": "1.0.30" } }
+      ]
+    }
+  }
+}
+```
+
+**失败**：
+
+```json
+{
+  "device": "B4BFE90CDBA1",
+  "product": "SmartHome-v1",
+  "type": "state",
+  "timestamp": 1791444742000,
+  "data": {
+    "full": false,
+    "targets": {
+      "ota": [
+        {
+          "params": {
+            "state": "fail",
+            "code": "MD5_MISMATCH",
+            "message": "固件校验失败"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**服务器处理**：
+
+```
+StateMessageHandler 收到：
+  1. 解析 data.targets.ota[0].params
+  2. 提取 state / progress / version
+  3. 调 deviceInfoService.updateOtaState(deviceId, state, progress, version)
+  4. 更新 device_info 表：
+     - ota_state    = "downloading" / "success" / "fail"
+     - ota_progress = 45 / 100
+     - ota_version  = "1.0.30"
+```
+
+### 2.7 OTA 状态机
+
+**设备端状态**：
+
+```
+IDLE → CHECKING → DOWNLOADING → VERIFYING → FLASHING → [SUCCESS | FAIL]
+                                                         ↓
+                                                    重启切换分区
+```
+
+**上报给服务器的状态**：
+
+| state | 含义 | 附带字段 |
+|---|---|---|
+| `accepted` | 已接受 | `version` |
+| `downloading` | 下载中 | `progress`, `version` |
+| `verifying` | 校验中 | `version` |
+| `flashing` | 刷写中 | `progress` |
+| `success` | 成功 | `version` |
+| `fail` | 失败 | `code`, `message` |
+| `canceled` | 取消 | `reason` |
+
+**完整状态流转**：
+
+```
+                  null（初始）
+                    ↓ 管理员触发
+                  accepted
+                    ↓ 开始下载
+                  downloading (progress: 0~100)
+                    ↓ 下载完
+                  verifying
+                    ↓ 校验通过
+                  flashing (progress: 0~100)
+                    ↓ 刷写完，重启
+                  success
+
+        任意阶段失败 → fail（带 code）
+```
+
+### 2.8 数据库落地
+
+**`device_command` 表**：
+
+| 字段 | 值 |
+|---|---|
+| `command_id` | 生成的 UUID |
+| `device_id` | 设备 MAC |
+| `action` | `"start"` |
+| `target` | `"ota"` |
+| `params` | `{url, version, md5, size}` |
+| `status` | PENDING → SENT → SUCCESS/FAILED/TIMEOUT |
+| `expire_time` | 当前时间 + 600 秒 |
+
+**`device_info` 表**：
+
+| 字段 | 值 | 更新时机 |
+|---|---|---|
+| `ota_state` | `downloading` / `success` / `fail` | StateMessageHandler |
+| `ota_progress` | 0~100 | StateMessageHandler |
+| `ota_version` | `"1.0.30"` | StateMessageHandler |
+
+**关键分工**：
+
+| 表 | 存什么 |
+|---|---|
+| `device_command` | 指令的生命周期（发送/ACK/超时） |
+| `device_info` | OTA 的业务进度和结果 |
+
+### 2.9 超时与重试
+
+**多级超时策略**：
+
+| 阶段 | 超时时间 | 处理 |
+|---|---|---|
+| 等待 ACK | 30 秒 | `CommandScheduler` 重试 |
+| 下载 | 10 分钟 | 标记 TIMEOUT |
+| 刷写 | 5 分钟 | 标记 TIMEOUT |
+| 重启后未上报 | 3 分钟 | 标记 TIMEOUT |
+
+**复用 `CommandScheduler`**：
+
+```java
+// 每 30 秒扫描
+@Scheduled(fixedDelay = RETRY_FIXED_DELAY)
+public void retryTimeout() {
+    List<DeviceCommand> retryable = deviceCommandService.listRetryable(30, 100);
+    for (DeviceCommand cmd : retryable) {
+        commandSender.send(cmd);   // 重发
+        deviceCommandService.incrementRetryCount(cmd.getId());
+    }
+}
+
+// 每 60 秒标记超时
+@Scheduled(fixedDelay = MARK_EXPIRED_FIXED_DELAY)
+public void markExpired() {
+    deviceCommandService.markExpiredCommands();
+    // 会把 expire_time < now 的 PENDING/SENT 指令标为 TIMEOUT
+}
+```
+
+**OTA 的特殊之处**：
+
+- **过期时间设长**（600 秒），避免下载中被误标超时
+- **重试要幂等**：设备必须用 `commandId` 去重，同 ID 只执行一次
+
+### 2.10 广播 OTA
+
+**Topic**：`$broadcast/command`
+
+**Payload**：
+
+```json
+{
+  "action": "start",
+  "target": "ota",
+  "params": {
+    "url": "http://192.168.6.6:8000/firmware_1.0.30.bin",
+    "version": "1.0.30",
+    "md5": "abc123def456",
+    "size": 1048576,
+    "rollout": {
+      "percent": 10
+    }
+  },
+  "timestamp": 1791444733387
+}
+```
+
+**与点对点的区别**：
+
+| 项 | 点对点 | 广播 |
+|---|---|---|
+| Topic | `device/{mac}/command` | `$broadcast/command` |
+| commandId | 服务器生成 | **设备自己生成** |
+| rollout | 无 | 支持灰度百分比 |
+| 精确追踪 | 有（commandId） | 无（每台设备自己的 ID） |
+
+**防雪崩策略**：
+
+1. **灰度百分比**（`rollout.percent`）：设备根据 MAC 哈希决定是否升级
+2. **随机延迟**：设备收到广播后随机延迟 0~N 秒再开始下载
+3. **分批推送**：不做"全网广播"，按 10% 分批推
+
+### 2.11 完整时序图
+
+```
+┌─────────────┐                              ┌─────────────┐
+│   服务器     │                              │    设备      │
+└──────┬──────┘                              └──────┬──────┘
+       │                                            │
+       │ ① HTTP 接口触发 OTA                          │
+       │    POST /api/ota/start                      │
+       │                                            │
+       │ ② prepareCommand 入库 + 立即下发             │
+       │    topic: device/{mac}/command              │
+       │    {commandId, action:start, target:ota,    │
+       │     params:{url, version, md5, size}}       │
+       │ ──────────────────────────────────────────►│
+       │                                            │
+       │                                      ③ 设备解析：
+       │                                        a. 校验 commandId 幂等
+       │                                        b. 校验 url / version
+       │                                        c. 准备开始
+       │                                            │
+       │ ④ 收到 ACK                                   │
+       │    topic: device/{mac}/ack                  │
+       │    {commandId, success:true,                │
+       │     result:{state:"accepted"}}              │
+       │ ◄──────────────────────────────────────────│
+       │                                            │
+       │ AckMessageHandler:                          │
+       │   - 匹配 commandId                          │
+       │   - device_command.status = SUCCESS         │
+       │                                            │
+       │ ⑤ 进度上报                                   │
+       │    topic: device/{mac}/state                │
+       │    {targets:{ota:[{params:                  │
+       │     {state:"downloading",progress:0}}]}}    │
+       │ ◄──────────────────────────────────────────│
+       │                                            │
+       │ ⑥ ... 下载进度 45% ... 80% ...              │
+       │ ◄──────────────────────────────────────────│
+       │                                            │
+       │ ⑦ 校验、刷写                                 │
+       │    {state:"verifying"} / {state:"flashing"} │
+       │ ◄──────────────────────────────────────────│
+       │                                            │
+       │         ⑧ 设备重启，断线重连                  │
+       │                                            │
+       │ ⑨ 重启后发 online                            │
+       │ ◄──────────────────────────────────────────│
+       │                                            │
+       │ ⑩ 上报成功                                   │
+       │    {targets:{ota:[{params:                  │
+       │     {state:"success",version:"1.0.30"}}]}}  │
+       │ ◄──────────────────────────────────────────│
+       │                                            │
+       │ StateMessageHandler:                        │
+       │   - device_info.ota_state = "success"       │
+       │   - device_info.ota_version = "1.0.30"      │
+       │                                            │
+```
+
+### 2.12 HTTP 接口
+
+**触发 OTA**：
+
+```bash
+POST /api/ota/start
+Content-Type: application/json
+
+{
+  "deviceId": "B4BFE90CDBA1",
+  "url": "http://192.168.6.6:8000/firmware_1.0.30.bin",
+  "version": "1.0.30",
+  "md5": "abc123def456",
+  "size": 1048576,
+  "operator": "admin",
+  "expireSeconds": 600
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 1,
+    "success": 1,
+    "failed": 0,
+    "failedDevices": [],
+    "commandIds": ["550e8400-e29b-41d4-a716-446655440000"]
+  }
+}
+```
+
+**查询进度**：
+
+```bash
+GET /api/ota/{deviceId}/progress
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "data": {
+    "deviceId": "B4BFE90CDBA1",
+    "otaState": "downloading",
+    "otaProgress": 45,
+    "otaVersion": "1.0.30",
+    "lastUpdateTime": "2026-10-08 15:30:00"
+  }
+}
+```
+
+### 2.13 错误码
+
+**OTA 专用错误码**：
+
+| code | 含义 |
+|---|---|
+| `URL_UNREACHABLE` | 固件 URL 不可达 |
+| `MD5_MISMATCH` | MD5 校验失败 |
+| `NO_SPACE` | Flash 空间不足 |
+| `VERSION_INCOMPATIBLE` | 版本不兼容 |
+| `FLASH_FAILED` | 刷写失败 |
+| `OTA_TIMEOUT` | 下载/刷写超时 |
+
+**错误上报方式**：
+
+- **ACK 阶段失败**：走 `device/{mac}/ack`（`success:false, error:xxx`）
+- **升级过程失败**：走 `device/{mac}/state`（`targets.ota[0].params.state="fail"`）
+
+---
+
+## 三、注册与 OTA 的对比
+
+| 维度 | 注册 | OTA |
+|---|---|---|
+| Broker | 1884 | 1883 |
+| 方向 | 设备 → 服务器（请求） | 服务器 → 设备（指令） |
+| Topic | `/provision/device/{mac}/register` | `device/{mac}/command`（`target=ota`） |
+| 需要 ACK 吗 | ❌ 不需要 | ✅ 需要 |
+| 需要 commandId 吗 | ❌ 不需要 | ✅ 需要 |
+| 需要 nonce 吗 | ✅ 需要（防重放） | ❌ 不需要 |
+| 需要签名吗 | ✅ 需要（身份认证） | ❌ 不需要（服务器主动发起） |
+| 数据库 | `device_info`（首次写入） | `device_command` + `device_info.ota_*` |
+| 超时 | 30 秒重试 | 10 分钟（长流程） |
+
+**核心区别**：
+
+- **注册是"设备主动报到"** → 需要身份认证（签名）
+- **OTA 是"服务器主动下令"** → 需要 ACK 回执
+
+### 5.4 OTA 远程升级
 
 支持两种触发方式，共用同一套 OTA 引擎：
 
