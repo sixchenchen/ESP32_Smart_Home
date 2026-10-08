@@ -748,27 +748,6 @@ IDLE → CHECKING → DOWNLOADING → VERIFYING → FLASHING → [SUCCESS | FAIL
 | 刷写 | 5 分钟 | 标记 TIMEOUT |
 | 重启后未上报 | 3 分钟 | 标记 TIMEOUT |
 
-**复用 `CommandScheduler`**：
-
-```java
-// 每 30 秒扫描
-@Scheduled(fixedDelay = RETRY_FIXED_DELAY)
-public void retryTimeout() {
-    List<DeviceCommand> retryable = deviceCommandService.listRetryable(30, 100);
-    for (DeviceCommand cmd : retryable) {
-        commandSender.send(cmd);   // 重发
-        deviceCommandService.incrementRetryCount(cmd.getId());
-    }
-}
-
-// 每 60 秒标记超时
-@Scheduled(fixedDelay = MARK_EXPIRED_FIXED_DELAY)
-public void markExpired() {
-    deviceCommandService.markExpiredCommands();
-    // 会把 expire_time < now 的 PENDING/SENT 指令标为 TIMEOUT
-}
-```
-
 **OTA 的特殊之处**：
 
 - **过期时间设长**（600 秒），避免下载中被误标超时
