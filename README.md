@@ -362,26 +362,6 @@ spiffs      data    spiffs    0x380000   0x80000    # 512KB
 
 **加了 pubkey 校验**：数据库里已有 pubkey 且与请求不一致 → 直接拒绝 → **无法冒充**。
 
-### 1.7 数据库落地
-
-注册成功后 `device_info` 表的字段：
-
-| 字段 | 来源 | 说明 |
-|---|---|---|
-| `device_id` | 请求 | 设备 MAC |
-| `product` | 请求 | 产品型号 |
-| `firmware` | 请求 | 固件版本 |
-| `pubkey` | 请求 | **首次注册时写入** |
-| `registered_at` | 服务器 | 最近注册时间 |
-| `online` | 服务器 | 注册时=0 |
-| `last_update_time` | 服务器 | 当前时间 |
-
-**说明**：
-
-- `device_name` / `location` **不在注册时填**，由管理员后台手动设置
-- `capabilities` / `current_state` 在**上线时**上报，不在注册时
-- `offline_reason` / `last_offline_time` 在**离线时**更新
-
 ### 1.8 错误码
 
 | 错误码 | 含义 | 设备处理 |
